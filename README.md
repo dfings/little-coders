@@ -61,7 +61,10 @@ The palette on the left of the code editor lists every function you can use.
 Because saved data lives in one browser, files are the way to back up work or move it to another computer.
 
 - **One game.** **Save to file** in the editor, or the 💾 button in the workshop. Load it with **Load a game from a file** in the workshop.
-- **Everything.** **Save everything to a file** and **Load everything from a file** in the footer cover all games, coins and the profile. The welcome pop-up can also start from a saved file.
+- **Everything.** **Save everything to a file** and **Load everything from a file** in the footer cover all games, coins and the profile.
+- **Codes.** **Get a code** turns everything into a block of letters you can copy and paste, for example into a message to yourself. **Use a code** loads it on another device. A code is the save file, compressed and base64-encoded, so a file that contains a code loads too.
+
+The welcome pop-up can also start from a saved file or a code.
 
 A real-code game loaded from a file runs whatever JavaScript is in it, so only load files you trust.
 
