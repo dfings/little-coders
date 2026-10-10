@@ -798,7 +798,7 @@ function welcome() {
     <h2 style="text-align:center">Welcome to Little Coders!</h2>
     <p style="text-align:center;color:var(--soft)">Make games, earn coins, and play games made by other coders.</p>
     <label>Pick a coder nickname <span class="hint">(not your real name)</span></label>
-    <input type="text" id="wName" maxlength="14" placeholder="SuperCoder">
+    <input type="text" id="wName" maxlength="14" placeholder="SuperCoder" autocomplete="off" data-1p-ignore data-lpignore="true" data-bwignore>
     <label>Pick a buddy</label>
     <div class="avatars">${avatars.map(a => `<button data-act="av" data-av="${a}" class="${a === pick ? 'on' : ''}">${a}</button>`).join('')}</div>
     <div class="acts"><button class="btn ghost" data-act="load" title="Load a file made with “Save everything to a file”">📂 I have a saved file</button>
