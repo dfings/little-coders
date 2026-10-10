@@ -758,11 +758,13 @@ function loadStateFile() {
       coins: between(Math.round(n(r.coins)), 0, 1e6), games, nextId: games.length + 1, muted: !!r.muted,
       owned: (Array.isArray(r.owned) ? r.owned : []).filter((id, i, a) => SEEDS.some(s => s.id === id) && a.indexOf(id) === i),
     });
+    const apply = () => { closeModal(); S = next; hist = null; save(); go('home'); toast('📂 Loaded everything from the file.'); };
+    if (!S.user) return apply();   // nothing here yet (the welcome screen), so there is nothing to replace
     modal(`<div class="big">📂</div><h2 style="text-align:center">Load everything from this file?</h2>
       <p style="text-align:center">It has ${games.length} game${games.length === 1 ? '' : 's'} and ${next.coins} 🪙${next.user ? ` for ${esc(next.user.avatar + ' ' + next.user.name)}` : ''}.<br>
       It will <b>replace</b> the games, coins and nickname in this browser.</p>
       <div class="acts" style="justify-content:center"><button class="btn ghost" data-act="x">Cancel</button><button class="btn" data-act="ok">Load it</button></div>`,
-      {ok: () => { S = next; hist = null; save(); go('home'); toast('📂 Loaded everything from the file.'); }});
+      {ok: apply});
   });
 }
 
@@ -780,6 +782,7 @@ function modal(html, acts = {}, opt = {}) {
     const a = e.target.closest('[data-act]');
     if (a) { const keep = acts[a.dataset.act] && acts[a.dataset.act](m, a) === false; if (!keep && curModal === m) closeModal(); }
     else if (e.target === m && !opt.sticky) closeModal();
+    if (!S.user && !curModal) welcome();   // e.g. after a "wrong file" message on the welcome screen
   });
   document.body.append(m); curModal = m;
   return m;
@@ -798,8 +801,10 @@ function welcome() {
     <input type="text" id="wName" maxlength="14" placeholder="SuperCoder">
     <label>Pick a buddy</label>
     <div class="avatars">${avatars.map(a => `<button data-act="av" data-av="${a}" class="${a === pick ? 'on' : ''}">${a}</button>`).join('')}</div>
-    <div class="acts"><button class="btn green" data-act="go">Let's go! 🚀</button></div>`,
+    <div class="acts"><button class="btn ghost" data-act="load" title="Load a file made with “Save everything to a file”">📂 I have a saved file</button>
+      <span class="grow"></span><button class="btn green" data-act="go">Let's go! 🚀</button></div>`,
     {
+      load: () => { loadStateFile(); return false; },
       av: (m, b) => { pick = b.dataset.av; m.querySelectorAll('.avatars button').forEach(x => x.classList.toggle('on', x === b)); return false; },
       go: m => { S.user = {name: $('#wName', m).value.trim() || 'SuperCoder', avatar: pick}; save(); render(); toast(`You start with ${START_COINS} 🪙. Make a game to earn more!`); }
     }, {sticky: true});
