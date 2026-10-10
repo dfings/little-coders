@@ -35,7 +35,8 @@ nav button.on{background:#fff;color:var(--brand)}
 
 main{max-width:1280px;margin:0 auto;padding:18px 16px 40px}
 footer{text-align:center;color:var(--soft);font-size:13px;padding:0 16px 30px}
-footer button{border:0;background:none;color:var(--brand);text-decoration:underline;padding:0}
+footer button{border:0;background:#fff;color:var(--brand);font-weight:800;border-radius:10px;padding:6px 10px;box-shadow:0 3px 0 var(--line)}
+code{background:#eee9ff;border-radius:5px;padding:0 4px;font:13px ui-monospace,Menlo,Consolas,monospace}
 
 /* buttons */
 .btn{border:0;border-radius:14px;padding:10px 16px;font-weight:800;background:var(--brand);color:#fff;box-shadow:0 4px 0 rgba(0,0,0,.18);white-space:nowrap}
@@ -174,7 +175,11 @@ details summary{cursor:pointer;font-weight:800}
 <main id="app"></main>
 <footer>
   Demo mode: the coins, the shop and the other coders are all pretend, and everything is saved only in this browser.
-  <button data-a="reset">Start the demo over</button>
+  <div class="row" style="justify-content:center;margin-top:8px">
+    <button data-a="savestate">💾 Save everything to a file</button>
+    <button data-a="loadstate">📂 Load everything from a file</button>
+    <button data-a="reset">🔄 Start the demo over</button>
+  </div>
 </footer>
 <div id="toasts"></div>
 
@@ -190,6 +195,7 @@ const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const q = s => "'" + String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, ' ') + "'";
 const n = v => { const x = parseFloat(v); return isFinite(x) ? x : 0; };
+const between = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
 /* ---------------- game engine ---------------- */
 const W = 480, H = 360;
@@ -223,7 +229,7 @@ class Engine {
     this.cv = canvas; this.g = canvas.getContext('2d');
     this.onEnd = onEnd; this.onError = onError;
     this.sprites = []; this.nextId = 1; this.bg = '#8fd3ff';
-    this.keyH = []; this.foreverH = []; this.everyH = []; this.touchH = []; this.tapH = [];
+    this.keyH = []; this.foreverH = []; this.everyH = []; this.touchH = []; this.tapH = []; this.condH = [];
     this.held = new Set(); this.touching = new Set(); this.ctx = null;
     this.scoreV = 0; this.time = 0; this.msg = ''; this.msgT = 0;
     this.running = false; this.ended = false;
@@ -256,7 +262,7 @@ class Engine {
       return s;
     };
     return {
-      WIDTH: W, HEIGHT: H, random, make,
+      WIDTH: W, HEIGHT: H, X_MAX: W, Y_MAX: H, random, make,
       background: c => { E.bg = String(c); },
       makeMany: (count, emoji, name) => { for (let i = 0; i < Math.min(50, count); i++) make(emoji, name, random(30, W - 30), random(30, H - 30)); },
       move: (name, dir, steps = 5) => { const d = DIRS[dir] || [0, 0]; grp(name).forEach(s => { s.x += d[0] * steps; s.y += d[1] * steps; clamp(s); }); },
@@ -289,6 +295,13 @@ class Engine {
       every: (secs, fn) => E.everyH.push({secs: Math.max(.05, +secs || 1), fn, t: 0}),
       whenTouch: (a, b, fn) => E.touchH.push({a, b, fn}),
       whenTapped: (name, fn) => E.tapH.push({name, fn}),
+      // these three fire once, at the moment the thing becomes true
+      whenScore: (target, fn) => E.condH.push({fn, was: false, test: () => E.scoreV >= target}),
+      whenTimer: (secs, fn) => { E.showTimer = true; E.condH.push({fn, was: false, test: () => E.time >= secs}); },
+      whenNoneLeft: (name, fn) => {
+        let seen = false;   // "none left" only counts once there have been some
+        E.condH.push({fn, was: false, test: () => { const c = E.sprites.some(s => s.name === name && !s.dead); if (c) seen = true; return seen && !c; }});
+      },
     };
   }
 
@@ -361,6 +374,7 @@ class Engine {
     });
     this.touching = now;
     this.sprites = this.sprites.filter(s => !s.dead);
+    for (const h of this.condH) { const is = h.test(); if (is && !h.was) this.call(h.fn); h.was = is; }
   }
 
   tap(x, y) {
@@ -388,6 +402,10 @@ class Engine {
     g.font = '900 18px system-ui, sans-serif'; g.textAlign = 'left'; g.lineJoin = 'round';
     g.lineWidth = 4; g.strokeStyle = 'rgba(0,0,0,.55)'; g.fillStyle = '#fff';
     g.strokeText('⭐ ' + this.scoreV, 10, 18); g.fillText('⭐ ' + this.scoreV, 10, 18);
+    if (this.showTimer) {   // games with a "when timer passes" block show the clock
+      const t = '⏱️ ' + Math.floor(this.time);
+      g.textAlign = 'right'; g.strokeText(t, W - 10, 18); g.fillText(t, W - 10, 18);
+    }
     if (this.msgT > 0 && this.msg) {
       g.font = '800 16px system-ui, sans-serif'; g.textAlign = 'center';
       const w = Math.min(W - 20, g.measureText(this.msg).width + 28);
@@ -438,6 +456,10 @@ function makeStage(host, opt = {}) {
     }
   };
   over.addEventListener('click', e => { if (e.target.closest('[data-again]')) stage.run(lastCode); });
+  if (opt.onPoint) {
+    cv.addEventListener('pointermove', e => { const r = cv.getBoundingClientRect(); opt.onPoint(Math.round(between((e.clientX - r.left) / r.width * W, 0, W)), Math.round(between((e.clientY - r.top) / r.height * H, 0, H))); });
+    cv.addEventListener('pointerleave', () => opt.onPoint());
+  }
   cv.addEventListener('pointerdown', e => {
     const r = cv.getBoundingClientRect();
     if (eng) eng.tap((e.clientX - r.left) / r.width * W, (e.clientY - r.top) / r.height * H);
@@ -460,7 +482,6 @@ const OPTIONS = {
   color: [['skyblue', '🟦 sky'], ['lightgreen', '🟩 grass'], ['khaki', '🟨 sand'], ['pink', '🩷 pink'], ['orange', '🟧 orange'],
           ['white', '⬜ white'], ['midnightblue', '🌌 night'], ['black', '⬛ space']],
   sound: [['pop', 'pop'], ['coin', 'coin'], ['jump', 'jump'], ['boom', 'boom']],
-  end: [['win', '🎉 you win'], ['gameOver', '💥 game over']],
 };
 const CATS = [['events', '⚡ When…'], ['make', '🎨 Make'], ['motion', '🏃 Move'], ['game', '🏆 Game']];
 const wrapFn = (head, body) => head + '() => {\n' + body.map(l => '  ' + l).join('\n') + '\n});';
@@ -473,6 +494,9 @@ const BLOCKS = {
   touch:   {hat: 1, cat: 'events', parts: ['💥 when', ref('a', 0), 'touches', ref('b', 1)], wrap: (a, b) => wrapFn(`whenTouch(${q(a.a)}, ${q(a.b)}, `, b)},
   tap:     {hat: 1, cat: 'events', parts: ['👆 when', ref('a', 0), 'is tapped'], wrap: (a, b) => wrapFn(`whenTapped(${q(a.a)}, `, b)},
   forever: {hat: 1, cat: 'events', parts: ['🔁 forever'], wrap: (a, b) => wrapFn('forever(', b)},
+  whenScore: {hat: 1, cat: 'events', parts: ['⭐ when score reaches', {k: 'score', t: 'num', d: 10}], wrap: (a, b) => wrapFn(`whenScore(${n(a.score)}, `, b)},
+  whenTimer: {hat: 1, cat: 'events', parts: ['⏰ when timer passes', {k: 'secs', t: 'num', d: 20}, 'seconds'], wrap: (a, b) => wrapFn(`whenTimer(${n(a.secs)}, `, b)},
+  whenNone:  {hat: 1, cat: 'events', parts: ['🫥 when no', ref('a', 1), 'are left'], wrap: (a, b) => wrapFn(`whenNoneLeft(${q(a.a)}, `, b)},
   every:   {hat: 1, cat: 'events', parts: ['⏱️ every', {k: 'secs', t: 'num', d: 1}, 'seconds'], wrap: (a, b) => wrapFn(`every(${n(a.secs)}, `, b)},
 
   background: {cat: 'make', parts: ['paint the background', {k: 'color', t: 'color', d: 'skyblue'}], gen: a => `background(${q(a.color)});`},
@@ -494,13 +518,9 @@ const BLOCKS = {
   changeScore: {cat: 'game', parts: ['change score by', {k: 'by', t: 'num', d: 1}], gen: a => `changeScore(${n(a.by)});`},
   say:      {cat: 'game', parts: ['say', {k: 'text', t: 'text', d: 'Hello!'}], gen: a => `say(${q(a.text)});`},
   sound:    {cat: 'game', parts: ['play sound', {k: 'kind', t: 'sound', d: 'pop'}], gen: a => `sound(${q(a.kind)});`},
-  ifScore:  {cat: 'game', parts: ['if score reaches', {k: 'score', t: 'num', d: 10}, '→', {k: 'end', t: 'end', d: 'win'}], gen: a => `if (score() >= ${n(a.score)}) ${endFn(a.end)}();`},
-  ifTimer:  {cat: 'game', parts: ['if timer passes', {k: 'secs', t: 'num', d: 20}, 'seconds →', {k: 'end', t: 'end', d: 'gameOver'}], gen: a => `if (timer() >= ${n(a.secs)}) ${endFn(a.end)}();`},
-  ifNone:   {cat: 'game', parts: ['if no', ref('a', 1), 'are left →', {k: 'end', t: 'end', d: 'win'}], gen: a => `if (count(${q(a.a)}) === 0) ${endFn(a.end)}();`},
   win:      {cat: 'game', parts: ['🎉 you win!'], gen: () => 'win();'},
   gameOver: {cat: 'game', parts: ['💥 game over'], gen: () => 'gameOver();'},
 };
-const endFn = v => v === 'gameOver' ? 'gameOver' : 'win';
 const fields = type => BLOCKS[type].parts.filter(p => typeof p !== 'string');
 
 let cur = null;            // the game open in the editor
@@ -538,14 +558,15 @@ const SEEDS = [
    scripts: [
      sc(mk('start'), mk('background', 'pink'), mk('makeMany', 8, '🎈', 'balloon'), mk('glide', 'balloon', 'random', 2), mk('bounce', 'balloon'), mk('say', 'Tap all the balloons!')),
      sc(mk('tap', 'balloon'), mk('remove', 'balloon'), mk('sound', 'pop'), mk('changeScore', 1)),
-     sc(mk('forever'), mk('ifNone', 'balloon', 'win')),
+     sc(mk('whenNone', 'balloon'), mk('win')),
    ]},
   {id: 'seed-star', title: 'Star Catcher', icon: '⭐', author: 'PixelPanda', avatar: '🐼', price: 5, sales: 131, mode: 'blocks',
    desc: 'Help the cat catch 10 stars. Use the arrow keys.',
    scripts: [
      sc(mk('start'), mk('background', 'midnightblue'), mk('make', '🐱', 'cat', 240, 300), mk('makeMany', 4, '⭐', 'star'), mk('say', 'Catch 10 stars!')),
      ...moveKeys('cat', 5),
-     sc(mk('touch', 'cat', 'star'), mk('goRandom', 'star'), mk('changeScore', 1), mk('sound', 'coin'), mk('ifScore', 10, 'win')),
+     sc(mk('touch', 'cat', 'star'), mk('goRandom', 'star'), mk('changeScore', 1), mk('sound', 'coin')),
+     sc(mk('whenScore', 10), mk('win')),
    ]},
   {id: 'seed-ghost', title: 'Ghost Chase', icon: '👻', author: 'CaptainCode', avatar: '🦊', price: 10, sales: 87, mode: 'blocks',
    desc: 'Grab 8 candies, but do not let the ghost catch you!',
@@ -553,7 +574,8 @@ const SEEDS = [
      sc(mk('start'), mk('background', 'midnightblue'), mk('make', '🧒', 'kid', 60, 60), mk('make', '👻', 'ghost', 430, 310), mk('makeMany', 3, '🍬', 'candy'), mk('say', 'Get 8 candies. Run!')),
      ...moveKeys('kid', 4),
      sc(mk('forever'), mk('follow', 'ghost', 'kid', 1.4)),
-     sc(mk('touch', 'kid', 'candy'), mk('goRandom', 'candy'), mk('changeScore', 1), mk('sound', 'coin'), mk('ifScore', 8, 'win')),
+     sc(mk('touch', 'kid', 'candy'), mk('goRandom', 'candy'), mk('changeScore', 1), mk('sound', 'coin')),
+     sc(mk('whenScore', 8), mk('win')),
      sc(mk('touch', 'kid', 'ghost'), mk('sound', 'boom'), mk('gameOver')),
    ]},
   {id: 'seed-frog', title: 'Hungry Frog', icon: '🐸', author: 'LoopLlama', avatar: '🦙', price: 12, sales: 64, mode: 'code',
@@ -661,6 +683,82 @@ function toast(text) {
   $('#toasts').append(t); setTimeout(() => t.remove(), 4500);
 }
 
+/* ---------------- saving to and loading from text files ---------------- */
+const FILE_APP = 'little-coders';
+function download(name, data) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], {type: 'text/plain'}));
+  a.download = name; document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+function pickFile(kind, onLoad) {
+  const inp = document.createElement('input');
+  inp.type = 'file'; inp.accept = '.txt,.json,text/plain,application/json';
+  inp.onchange = async () => {
+    const f = inp.files[0]; if (!f) return;
+    let d = null;
+    try { d = JSON.parse(await f.text()); } catch (e) {}
+    if (!d || d.app !== FILE_APP) return note('🤔', 'That file does not look right', 'Pick a text file that was saved from Little Coders.');
+    if (d.kind !== kind) return note('🤔', 'Wrong kind of file', kind === 'game'
+      ? 'That file holds <b>everything</b>, not one game. Use “Load everything from a file” at the bottom of the page.'
+      : 'That file holds <b>one game</b>. Use “Load a game from a file” in the workshop.');
+    onLoad(d);
+  };
+  inp.click();
+}
+/* Files can be edited by hand, so only keep the parts we understand. */
+function cleanGame(r) {
+  r = r && typeof r === 'object' ? r : {};
+  const str = (v, dflt, max) => typeof v === 'string' && v ? v.slice(0, max) : dflt;
+  const blk = b => b && BLOCKS[b.type]
+    ? mk(b.type, ...fields(b.type).map(f => b.args && ['string', 'number'].includes(typeof b.args[f.k]) ? b.args[f.k] : undefined)) : null;
+  const scripts = (Array.isArray(r.scripts) ? r.scripts : []).map(s => {
+    const hat = s && blk(s.hat);
+    return hat && BLOCKS[hat.type].hat ? {hat, blocks: (Array.isArray(s.blocks) ? s.blocks : []).map(blk).filter(b => b && !BLOCKS[b.type].hat)} : null;
+  }).filter(Boolean);
+  return {title: str(r.title, 'Loaded game', 30), icon: str(r.icon, '🎮', 8), desc: str(r.desc, '', 80),
+          mode: r.mode === 'code' ? 'code' : 'blocks', code: str(r.code, '', 200000), codeEdited: !!r.codeEdited, scripts};
+}
+const fileName = t => (String(t).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'game');
+
+function saveGameFile(g) {
+  const {title, icon, desc, mode, code, codeEdited, scripts} = g;
+  download(fileName(title) + '.little-coders-game.txt', {app: FILE_APP, kind: 'game', version: 1, game: {title, icon, desc, mode, code, codeEdited, scripts}});
+  toast(`💾 Saved ${title} to a file.`);
+}
+function loadGameFile() {
+  pickFile('game', d => {
+    const g = Object.assign({id: 'g' + S.nextId++, beaten: false, finished: false, published: false, price: 5, sales: 0, remixOf: null}, cleanGame(d.game));
+    S.games.push(g); save();
+    cur = g; selScript = 0; go('editor');
+    toast(`📂 Loaded ${g.title}.`);
+  });
+}
+function saveStateFile() {
+  download('little-coders-everything.txt', {app: FILE_APP, kind: 'state', version: 1, state: S});
+  toast('💾 Saved everything to a file.');
+}
+function loadStateFile() {
+  pickFile('state', d => {
+    const r = d.state && typeof d.state === 'object' ? d.state : {};
+    const games = (Array.isArray(r.games) ? r.games : []).map((g, i) => Object.assign(cleanGame(g), {
+      id: 'g' + (i + 1), beaten: !!g.beaten, finished: !!g.finished, published: !!g.published && !!g.finished,
+      price: between(Math.round(n(g.price)), 0, MAX_PRICE), sales: Math.max(0, Math.round(n(g.sales))),
+      remixOf: typeof g.remixOf === 'string' ? g.remixOf : null,
+    }));
+    const next = Object.assign(fresh(), {
+      user: r.user && typeof r.user.name === 'string' ? {name: r.user.name.slice(0, 14) || 'SuperCoder', avatar: String(r.user.avatar || '🦊').slice(0, 8)} : null,
+      coins: between(Math.round(n(r.coins)), 0, 1e6), games, nextId: games.length + 1, muted: !!r.muted,
+      owned: (Array.isArray(r.owned) ? r.owned : []).filter((id, i, a) => SEEDS.some(s => s.id === id) && a.indexOf(id) === i),
+    });
+    modal(`<div class="big">📂</div><h2 style="text-align:center">Load everything from this file?</h2>
+      <p style="text-align:center">It has ${games.length} game${games.length === 1 ? '' : 's'} and ${next.coins} 🪙${next.user ? ` for ${esc(next.user.avatar + ' ' + next.user.name)}` : ''}.<br>
+      It will <b>replace</b> the games, coins and nickname in this browser.</p>
+      <div class="acts" style="justify-content:center"><button class="btn ghost" data-act="x">Cancel</button><button class="btn" data-act="ok">Load it</button></div>`,
+      {ok: () => { S = next; hist = null; save(); go('home'); toast('📂 Loaded everything from the file.'); }});
+  });
+}
+
 /* ---------------- modals ---------------- */
 let curModal = null, modalStage = null;
 function closeModal() {
@@ -759,7 +857,8 @@ const byMe = () => `by ${S.user ? esc(S.user.avatar + ' ' + S.user.name) : 'you'
 
 function renderMake() {
   app.innerHTML = `
-    <div class="sect"><h2>🛠️ My workshop</h2><span class="hint">Every game you finish earns ${FINISH_REWARD} 🪙</span></div>
+    <div class="sect"><h2>🛠️ My workshop</h2><span class="hint">Every game you finish earns ${FINISH_REWARD} 🪙</span>
+      <span class="grow"></span><button class="btn small ghost" data-a="loadgame">📂 Load a game from a file</button></div>
     <div class="grid">
       <div class="card new" data-a="new"><div class="e">➕</div>New game</div>
       ${S.games.map(g => card(g, `
@@ -767,6 +866,7 @@ function renderMake() {
         <div class="row">
           <button class="btn small" data-a="edit" data-id="${g.id}">✏️ Edit</button>
           <button class="btn small ghost" data-a="play" data-id="${g.id}">▶ Play</button>
+          <button class="btn small ghost" data-a="savegame" data-id="${g.id}" title="Save to a file">💾</button>
           <button class="btn small ghost" data-a="del" data-id="${g.id}" title="Delete">🗑️</button>
         </div>`, byMe())).join('')}
     </div>`;
@@ -885,8 +985,9 @@ function paletteHTML() {
 const SNIPPETS = [
   ['Make things', ["background('skyblue');", "make('🐱', 'cat', 240, 180);", "makeMany(5, '⭐', 'star');", "setSize('cat', 60);", "remove('star');"]],
   ['Move things', ["move('cat', 'left', 5);", "goTo('cat', 240, 180);", "goRandom('star');", "glide('star', 'down', 2);", "bounce('star');", "follow('ghost', 'cat', 1);", "stop('star');"]],
-  ['When…', ["whenKey('left', () => {\n  \n});", "whenTouch('cat', 'star', () => {\n  \n});", "whenTapped('star', () => {\n  \n});", "forever(() => {\n  \n});", "every(1, () => {\n  \n});"]],
-  ['Game', ["changeScore(1);", "say('Hello!');", "sound('coin');", "if (score() >= 10) win();", "if (timer() >= 20) gameOver();", "if (count('star') === 0) win();", "random(1, 10)"]],
+  ['When…', ["whenKey('left', () => {\n  \n});", "whenTouch('cat', 'star', () => {\n  \n});", "whenTapped('star', () => {\n  \n});", "forever(() => {\n  \n});", "every(1, () => {\n  \n});",
+             "whenScore(10, () => {\n  win();\n});", "whenTimer(20, () => {\n  gameOver();\n});", "whenNoneLeft('star', () => {\n  win();\n});"]],
+  ['Game', ["changeScore(1);", "say('Hello!');", "sound('coin');", "if (score() >= 10) win();", "if (timer() >= 20) gameOver();", "if (count('star') === 0) win();", "random(1, 10)", "random(0, X_MAX)", "random(0, Y_MAX)"]],
 ];
 
 function renderEditor() {
@@ -895,9 +996,12 @@ function renderEditor() {
   app.innerHTML = `
     <div class="ed-top">
       <button class="btn ghost small" data-a="go" data-v="make">← Workshop</button>
-      <select id="gIcon" class="iconsel" title="Game picture">${[...new Set([g.icon, ...EMOJI])].map(e => `<option ${e === g.icon ? 'selected' : ''}>${e}</option>`).join('')}</select>
+      <select id="gIcon" class="iconsel" title="Game picture">${[...new Set([g.icon, ...EMOJI])].map(e => `<option ${e === g.icon ? 'selected' : ''}>${esc(e)}</option>`).join('')}</select>
       <input id="gTitle" class="title" maxlength="30" value="${esc(g.title)}" title="Game name">
       <div class="seg"><button data-a="mode" data-m="blocks" class="${g.mode === 'blocks' ? 'on' : ''}">🧱 Blocks</button><button data-a="mode" data-m="code" class="${g.mode === 'code' ? 'on' : ''}">⌨️ Real code</button></div>
+      <button class="btn ghost small" id="undoBtn" data-a="undo" title="Undo (Ctrl+Z)">↶ Undo</button>
+      <button class="btn ghost small" id="redoBtn" data-a="redo" title="Redo (Ctrl+Shift+Z)">↷ Redo</button>
+      <button class="btn ghost small" data-a="savegame" data-id="${g.id}" title="Save this game to a file">💾 Save to file</button>
       <span class="grow"></span>
       ${g.finished ? '<span class="chip green">✅ Finished</span>' : `<button class="btn green" data-a="finish">✅ Finish game · +${reward} 🪙</button>`}
       <button class="btn pink" data-a="publish" ${g.finished ? '' : 'disabled title="Finish your game first"'}>${g.published ? '🚀 In the shop · change' : '🚀 Publish'}</button>
@@ -912,14 +1016,21 @@ function renderEditor() {
           <button class="btn ghost" data-a="stoprun">⏹ Stop</button>
           <span class="hint" id="beatHint"></span>
         </div>
+        <div class="panel hint" id="stageInfo">📐 The stage is <b>${W} wide</b> and <b>${H} tall</b>.<br>
+          x goes from 0 (left) to ${W} (right) — that is <code>X_MAX</code>.<br>
+          y goes from 0 (top) to ${H} (bottom) — that is <code>Y_MAX</code>.<br>
+          <b id="ptr">Point at the stage to see x and y.</b></div>
         <div class="panel" id="peekBox"></div>
       </div>
     </div>`;
   $('#gTitle').addEventListener('input', e => { g.title = e.target.value.trim() || 'My Game'; save(); });
   $('#gIcon').addEventListener('change', e => { g.icon = e.target.value; save(); });
-  edStage = makeStage($('#edStage'), {onEnd: result => { if (result === 'win' && !g.beaten) { g.beaten = true; save(); beatHint(); } }});
+  edStage = makeStage($('#edStage'), {
+    onEnd: result => { if (result === 'win' && !g.beaten) { g.beaten = true; save(); beatHint(); } },
+    onPoint: (x, y) => { $('#ptr').textContent = x === undefined ? 'Point at the stage to see x and y.' : `👉 x: ${x}, y: ${y}`; },
+  });
   edStage.idle();
-  beatHint();
+  beatHint(); histInit();
   if (g.mode === 'blocks') {
     $('#pal').innerHTML = paletteHTML();
     $('#peekBox').innerHTML = `<details><summary>👀 Peek at the real code</summary><pre class="peek" id="peekCode"></pre>
@@ -929,15 +1040,15 @@ function renderEditor() {
     $('#pal').innerHTML = `<div class="hint" style="margin-bottom:6px">Click to add to your code:</div>` + SNIPPETS.map(([h, list]) =>
       `<h4>${h}</h4>` + list.map(s => `<button class="snip" data-snip="${esc(s)}">${esc(s.split('\n')[0])}</button>`).join('')).join('');
     $('#ws').innerHTML = `<textarea id="codeBox" spellcheck="false" autocapitalize="off" autocomplete="off"></textarea>`;
-    $('#peekBox').innerHTML = `<div class="hint">You are writing real JavaScript! The stage is 480 wide and 360 tall. x goes across, y goes down.</div>`;
+    $('#peekBox').innerHTML = `<div class="hint">You are writing real JavaScript! Use <code>X_MAX</code> and <code>Y_MAX</code> for the right and bottom edges of the stage.</div>`;
     const box = $('#codeBox'); box.value = g.code;
     const insert = text => {
       const a = box.selectionStart, b = box.selectionEnd;
-      box.setRangeText(text, a, b, 'end'); box.focus(); g.code = box.value; g.codeEdited = true; save();
+      box.setRangeText(text, a, b, 'end'); box.focus(); g.code = box.value; g.codeEdited = true; save(); commit();
     };
-    box.addEventListener('input', () => { g.code = box.value; g.codeEdited = true; save(); });
+    box.addEventListener('input', () => { g.code = box.value; g.codeEdited = true; save(); commitSoon(); });
     box.addEventListener('keydown', e => { if (e.key === 'Tab') { e.preventDefault(); insert('  '); } });
-    $('#pal').addEventListener('click', e => { const s = e.target.closest('[data-snip]'); if (s) insert(s.dataset.snip + '\n'); });
+    $('#pal').addEventListener('click', e => { const s = e.target.closest('[data-snip]'); if (s) insert((/[^\n]$/.test(box.value.slice(0, box.selectionStart)) ? '\n' : '') + s.dataset.snip + '\n'); });
   }
 }
 function beatHint() {
@@ -959,6 +1070,42 @@ function renderWorkspace() {
 function refreshPeek() { const p = $('#peekCode'); if (p && cur) p.textContent = genCode(cur.scripts); }
 const blockAt = path => { const [si, bi] = path.split('.').map(Number); return bi === undefined ? cur.scripts[si].hat : cur.scripts[si].blocks[bi]; };
 
+/* Undo and redo: a stack of snapshots of the open game's blocks and code. */
+let hist = null;
+const snap = () => JSON.stringify({scripts: cur.scripts, code: cur.code, codeEdited: cur.codeEdited});
+function histButtons(pending) {
+  const u = $('#undoBtn'), r = $('#redoBtn');
+  if (u) u.disabled = !pending && !hist.undo.length;
+  if (r) r.disabled = !!pending || !hist.redo.length;
+}
+function histInit() {
+  if (!hist || hist.id !== cur.id) hist = {id: cur.id, undo: [], redo: [], last: snap(), timer: 0};
+  histButtons();
+}
+function commit() {
+  clearTimeout(hist.timer); hist.timer = 0;
+  const s = snap();
+  if (s !== hist.last) { hist.undo.push(hist.last); if (hist.undo.length > 200) hist.undo.shift(); hist.redo = []; hist.last = s; }
+  histButtons();
+}
+// typing is grouped: one undo step per pause, not per letter
+function commitSoon() { clearTimeout(hist.timer); hist.timer = setTimeout(commit, 600); histButtons(true); }
+function timeTravel(from, to) {
+  if (!cur || !hist) return;
+  if (hist.timer) commit();
+  if (!hist[from].length) return;
+  hist[to].push(hist.last); hist.last = hist[from].pop();
+  Object.assign(cur, JSON.parse(hist.last)); save();
+  if (cur.mode === 'blocks') renderWorkspace(); else $('#codeBox').value = cur.code;
+  histButtons();
+}
+window.addEventListener('keydown', e => {
+  if (view !== 'editor' || curModal || !(e.metaKey || e.ctrlKey) || e.target.id === 'gTitle') return;
+  const k = e.key.toLowerCase();
+  if (k === 'z') { e.preventDefault(); e.shiftKey ? timeTravel('redo', 'undo') : timeTravel('undo', 'redo'); }
+  else if (k === 'y') { e.preventDefault(); timeTravel('redo', 'undo'); }
+});
+
 let drag = null;
 function bindWorkspace() {
   const ws = $('#ws'), pal = $('#pal');
@@ -970,7 +1117,7 @@ function bindWorkspace() {
       s.blocks.splice(at === undefined ? s.blocks.length : at, 0, mk(type));
       if (si !== undefined) selScript = si;
     }
-    save(); renderWorkspace();
+    save(); renderWorkspace(); commit();
   };
   pal.addEventListener('click', e => { const b = e.target.closest('[data-new]'); if (b) addNew(b.dataset.new); });
   pal.addEventListener('dragstart', e => { const b = e.target.closest('[data-new]'); if (b) { drag = {type: b.dataset.new}; e.dataTransfer.setData('text/plain', b.dataset.new); } });
@@ -979,7 +1126,7 @@ function bindWorkspace() {
   ws.addEventListener('input', e => {
     const f = e.target.closest('.f'); if (!f) return;
     blockAt(f.dataset.p).args[f.dataset.k] = f.dataset.t === 'new' ? f.value.replace(/['"\\]/g, '') : f.value;
-    save(); refreshPeek();
+    save(); refreshPeek(); commitSoon();
   });
   // a renamed character has to show up in every "who" menu
   ws.addEventListener('change', e => { if (e.target.dataset.t === 'new') renderWorkspace(); });
@@ -990,7 +1137,7 @@ function bindWorkspace() {
       if (t.dataset.w === 'delscript') cur.scripts.splice(si, 1);
       else if (t.dataset.w === 'del') list.splice(bi, 1);
       else { const to = bi + (t.dataset.w === 'up' ? -1 : 1); if (to >= 0 && to < list.length) [list[bi], list[to]] = [list[to], list[bi]]; }
-      save(); renderWorkspace();
+      save(); renderWorkspace(); commit();
     } else if (scr && +scr.dataset.si !== selScript && !e.target.closest('.f')) {
       selScript = +scr.dataset.si;
       ws.querySelectorAll('.script').forEach(x => x.classList.toggle('sel', +x.dataset.si === selScript));
@@ -1029,13 +1176,13 @@ function bindWorkspace() {
     const [b] = cur.scripts[fs].blocks.splice(fb, 1);
     if (fs === si && fb < i) i--;
     cur.scripts[si].blocks.splice(i, 0, b); selScript = si;
-    save(); renderWorkspace();
+    save(); renderWorkspace(); commit();
   });
 }
 
 function setMode(mode) {
   const g = cur; if (g.mode === mode) return;
-  const apply = () => { g.mode = mode; save(); renderEditor(); };
+  const apply = () => { g.mode = mode; save(); renderEditor(); commit(); };
   if (mode === 'code') {
     if (!g.code || !g.codeEdited) { g.code = genCode(g.scripts); g.codeEdited = false; return apply(); }
     modal(`<div class="big">⌨️</div><h2 style="text-align:center">Which code do you want?</h2>
@@ -1051,7 +1198,7 @@ function setMode(mode) {
 
 function finishGame() {
   const g = cur; if (g.finished) return;
-  if (!g.beaten) return note('🏆', 'Beat your game first!', 'A finished game needs a way to win. Press ▶ Play and win your own game once.<br><span class="hint">Tip: use a 🏆 Game block like “if score reaches 10 → you win”.</span>', 'Got it');
+  if (!g.beaten) return note('🏆', 'Beat your game first!', 'A finished game needs a way to win. Press ▶ Play and win your own game once.<br><span class="hint">Tip: use a ⚡ “when score reaches 10” block with 🎉 you win inside it.</span>', 'Got it');
   const reward = g.remixOf ? REMIX_REWARD : FINISH_REWARD;
   g.finished = true; addCoins(reward); beep('win'); renderEditor();
   modal(`<div class="big">🎉</div><h2 style="text-align:center">You finished ${esc(g.title)}!</h2>
@@ -1112,6 +1259,12 @@ const ACTIONS = {
       {del: () => { S.games = S.games.filter(x => x !== g); save(); render(); }});
   },
   mode: d => setMode(d.m),
+  undo: () => timeTravel('undo', 'redo'),
+  redo: () => timeTravel('redo', 'undo'),
+  savegame: d => saveGameFile(findGame(d.id)),
+  loadgame: loadGameFile,
+  savestate: saveStateFile,
+  loadstate: loadStateFile,
   run: () => edStage && edStage.run(gameCode(cur)),
   stoprun: () => edStage && edStage.idle(),
   finish: finishGame,
