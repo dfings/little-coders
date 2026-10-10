@@ -671,6 +671,18 @@ const FINISH_REWARD = 25, REMIX_REWARD = 10, START_COINS = 10, MAX_PRICE = 30;
 const fresh = () => ({user: null, coins: START_COINS, games: [], owned: [], nextId: 1, muted: false});
 let S = fresh();
 try { const raw = JSON.parse(localStorage.getItem(STORE_KEY)); if (raw && raw.games) S = Object.assign(fresh(), raw); } catch (e) {}
+/* Blocks this version does not know (say, ones we removed later) are skipped, not shown as a blank editor. */
+function cleanScripts(raw) {
+  const blk = b => b && BLOCKS[b.type]
+    ? mk(b.type, ...fields(b.type).map(f => b.args && ['string', 'number'].includes(typeof b.args[f.k]) ? b.args[f.k] : undefined)) : null;
+  return (Array.isArray(raw) ? raw : []).map(s => {
+    const hat = s && blk(s.hat);
+    return hat && BLOCKS[hat.type].hat ? {hat, blocks: (Array.isArray(s.blocks) ? s.blocks : []).map(blk).filter(b => b && !BLOCKS[b.type].hat)} : null;
+  }).filter(Boolean);
+}
+const countBlocks = scripts => (Array.isArray(scripts) ? scripts : []).reduce((t, s) => t + 1 + (s && Array.isArray(s.blocks) ? s.blocks.length : 0), 0);
+let skippedBlocks = 0;
+for (const g of S.games) { const before = countBlocks(g.scripts); g.scripts = cleanScripts(g.scripts); skippedBlocks += before - countBlocks(g.scripts); }
 const save = () => { try { localStorage.setItem(STORE_KEY, JSON.stringify(S)); } catch (e) {} };
 
 function addCoins(amount) {
@@ -710,12 +722,7 @@ function pickFile(kind, onLoad) {
 function cleanGame(r) {
   r = r && typeof r === 'object' ? r : {};
   const str = (v, dflt, max) => typeof v === 'string' && v ? v.slice(0, max) : dflt;
-  const blk = b => b && BLOCKS[b.type]
-    ? mk(b.type, ...fields(b.type).map(f => b.args && ['string', 'number'].includes(typeof b.args[f.k]) ? b.args[f.k] : undefined)) : null;
-  const scripts = (Array.isArray(r.scripts) ? r.scripts : []).map(s => {
-    const hat = s && blk(s.hat);
-    return hat && BLOCKS[hat.type].hat ? {hat, blocks: (Array.isArray(s.blocks) ? s.blocks : []).map(blk).filter(b => b && !BLOCKS[b.type].hat)} : null;
-  }).filter(Boolean);
+  const scripts = cleanScripts(r.scripts);
   return {title: str(r.title, 'Loaded game', 30), icon: str(r.icon, '🎮', 8), desc: str(r.desc, '', 80),
           mode: r.mode === 'code' ? 'code' : 'blocks', code: str(r.code, '', 200000), codeEdited: !!r.codeEdited, scripts};
 }
@@ -1280,6 +1287,7 @@ document.addEventListener('click', e => {
 });
 
 render();
+if (skippedBlocks) toast(`🧹 Skipped ${skippedBlocks} old block${skippedBlocks === 1 ? '' : 's'} this version does not know.`);
 </script>
 </body>
 </html>
