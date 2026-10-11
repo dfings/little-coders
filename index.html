@@ -78,7 +78,14 @@ code{background:#eee9ff;border-radius:5px;padding:0 4px;font:13px ui-monospace,M
 /* editor */
 .ed-top{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
 .ed-top .title{font-weight:900;font-size:20px;border:2px solid var(--line);border-radius:12px;padding:8px 10px;min-width:0;width:240px;background:#fff}
-.iconsel{font-size:22px;border:2px solid var(--line);border-radius:12px;padding:5px;background:#fff}
+.iconsel{font-size:24px;border:2px solid var(--line);border-radius:12px;padding:3px 10px;background:#fff;line-height:1.3}
+.emo-tabs{display:flex;gap:5px;flex-wrap:wrap;margin:10px 0 8px}
+.emo-tabs button{font-size:20px;border:0;background:#eee9ff;border-radius:10px;width:42px;height:36px;padding:0}
+.emo-scroll{position:relative;max-height:min(44vh,340px);overflow:auto;border:2px solid var(--line);border-radius:14px;padding:4px 8px 8px}
+.emo-scroll h4{margin:8px 0 4px;font-size:13px;color:var(--soft)}
+.emo-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(42px,1fr));gap:4px}
+.emo-grid button{font-size:25px;height:42px;border:3px solid transparent;border-radius:12px;background:#f6f3ff;padding:0;line-height:1}
+.emo-grid button.on{border-color:var(--brand);background:#fff}
 .seg{display:flex;background:#fff;border-radius:14px;padding:4px;box-shadow:0 4px 0 var(--line)}
 .seg button{border:0;background:none;padding:7px 12px;border-radius:10px;font-weight:800;color:var(--soft)}
 .seg button.on{background:var(--brand);color:#fff}
@@ -107,6 +114,7 @@ code{background:#eee9ff;border-radius:5px;padding:0 4px;font:13px ui-monospace,M
 .pal .blk i{font-style:normal;background:rgba(255,255,255,.3);border-radius:6px;padding:0 5px}
 .blk.hat{border-radius:16px 16px 10px 10px;padding:8px 10px;margin:0}
 .f{border:0;border-radius:7px;padding:2px 5px;background:#fff;color:var(--ink);font-weight:800;font-size:14px;height:26px}
+.f.emo{font-size:17px;min-width:36px;padding:0 6px;cursor:pointer}
 .f.num{width:58px}.f.nm{width:74px}.f.txt{width:150px}
 select.f{padding:2px}
 .tools{margin-left:auto;display:flex;gap:2px}
@@ -497,10 +505,17 @@ function makeStage(host, opt = {}) {
 }
 
 /* ---------------- blocks ---------------- */
-const EMOJI = ['🐱','🐶','🐸','🐼','🦊','🐰','🐝','🦋','🐟','🦖','🧒','🤖','👻','👾','🚀','🛸','☄️','⭐','🌙','☁️','🔥','💎','🪙','🎈','⚽','🏀',
-               '🍎','🍌','🍕','🍩','🍬','🧁','🧺','🌳','🌵','🍄','💣','🧱','❤️','🎁'];
+const EMOJI_CATS = [
+  ['Animals', '🐱 🐶 🐭 🐹 🐰 🦊 🐻 🐼 🐨 🐯 🦁 🐮 🐷 🐸 🐵 🐔 🐧 🐦 🦆 🦉 🦇 🐺 🐴 🦄 🐝 🐛 🦋 🐌 🐞 🐜 🕷️ 🐢 🐍 🦎 🦖 🦕 🐙 🦑 🦀 🐠 🐟 🐬 🐳 🦈 🐊 🐘 🦒 🐑 🐉 🐲 🦂 🦍 🦅 🦣 🪲 🪳 🪰 🪱 🪼 🫍 🐦‍🔥 🦠'],
+  ['People and monsters', '🧒 👦 👧 🧑 👶 🧙 🧚 🧛 🧜 🧝 🧞 🧟 🦸 🦹 🥷 👮 👷 🕵️ 👨‍🚀 👸 🤴 🤖 👻 👽 👾 🤡 💀 🎃 ⛄ 😀 😎 🤠 😈 👿 👹 👺 🧌 🫈 🫪'],
+  ['Food', '🍎 🍌 🍓 🍇 🍉 🍊 🍍 🥕 🌽 🍄 🍕 🍔 🌭 🌮 🍟 🍗 🥚 🧀 🥨 🍞 🍩 🍪 🎂 🧁 🍰 🍦 🍬 🍭 🍫 🍿 🥤 🍯'],
+  ['Nature and space', '🌳 🌲 🌴 🌵 🌻 🌷 🍀 🍁 🌈 ☀️ 🌙 ⭐ 🌟 ☁️ ⚡ ❄️ 🔥 💧 🌊 🌍 🪐 🚀 🛸 ☄️ 🌋 ⛰️ 🏝️ 🪨 🪵 🫧 🛘'],
+  ['Things', '💎 🪙 👑 🔑 🗝️ 🎁 🎈 💣 🧱 📦 🧺 🧲 🔔 💡 🔨 ⚔️ 🛡️ 🏹 🧪 🔮 🧸 🚪 🏠 🏰 ⛺ 🚗 🚌 🚂 ✈️ 🚁 ⛵ 🚲 🛹 🪎 🪄 🗡️ 🪃 🧨 🪜 🪤 🕸️ 🪦 ⚰️ 🗿 🪽'],
+  ['Sports and play', '⚽ 🏀 🏈 ⚾ 🎾 🏐 🎳 🏓 🥅 🎯 🎲 🧩 🎮 🏆 🥇 🎵 🥁 🎸 🪊'],
+  ['Shapes and signs', '❤️ 💛 💚 💙 💜 🖤 💥 ✨ 💫 💤 💨 ❓ ❗ ✅ ❌ ⬆️ ⬇️ ⬅️ ➡️ 🔴 🟡 🟢 🔵 🟣 ⬛ ⬜ 🟥 🟦 🚩 🏁 🏴‍☠️ ☠️ 🫯'],
+].map(([title, list]) => [title, list.split(' ')]);
+const EMOJI = EMOJI_CATS.flatMap(c => c[1]);
 const OPTIONS = {
-  emoji: EMOJI.map(e => [e, e]),
   key: [['left', '◀ left'], ['right', '▶ right'], ['up', '▲ up'], ['down', '▼ down'], ['space', 'space']],
   dir: [['left', '◀ left'], ['right', '▶ right'], ['up', '▲ up'], ['down', '▼ down']],
   dirR: [['left', '◀ left'], ['right', '▶ right'], ['up', '▲ up'], ['down', '▼ down'], ['random', '🎲 any way']],
@@ -895,7 +910,26 @@ function welcome() {
 const app = $('#app');
 let view = 'home', edStage = null;
 
-function go(v) { view = v; if (v !== 'editor') cur = null; render(); window.scrollTo(0, 0); }
+function go(v) {
+  view = v; if (v !== 'editor') cur = null;
+  render(); window.scrollTo(0, 0);
+  const h = hashFor();
+  if (location.hash !== h) history.pushState(null, '', h || location.pathname + location.search);
+}
+
+/* The address remembers where you are (#make, #shop, #games, #edit/g1), so a refresh or the back button lands on the same screen. */
+const HASH_VIEWS = {make: 'make', shop: 'shop', games: 'inv'};
+const hashFor = () => view === 'editor' && cur ? '#edit/' + cur.id
+  : view === 'home' ? '' : '#' + Object.keys(HASH_VIEWS).find(k => HASH_VIEWS[k] === view);
+function applyHash() {
+  const h = location.hash.slice(1);
+  cur = null;
+  if (h.startsWith('edit/')) {
+    cur = S.games.find(g => g.id === h.slice(5)) || null;
+    selScript = 0; view = cur ? 'editor' : 'make';   // a game that is gone falls back to the workshop
+  } else view = HASH_VIEWS[h] || 'home';
+}
+window.addEventListener('hashchange', () => { closeModal(); applyHash(); render(); window.scrollTo(0, 0); });
 
 function render() {
   if (edStage) { edStage.stop(); edStage = null; }
@@ -1050,11 +1084,41 @@ function newGame(from) {
   cur = g; selScript = 0; go('editor');
 }
 
+/* The emoji picker: a grid by category, the ones already in this game, and a box to type any emoji at all. */
+function firstEmoji(text) {
+  text = String(text).trim();
+  if (!text) return '';
+  try { return [...new Intl.Segmenter(undefined, {granularity: 'grapheme'}).segment(text)][0].segment; }
+  catch (e) { return [...text].slice(0, 2).join(''); }
+}
+function pickEmoji(current, onPick) {
+  const inGame = cur ? [...new Set(cur.scripts.flatMap(s => s.blocks).map(b => b.args.emoji).filter(Boolean))] : [];
+  const grid = (title, list) => `<h4>${title}</h4><div class="emo-grid">${list.map(e =>
+    `<button data-act="pick" data-e="${esc(e)}" class="${e === current ? 'on' : ''}">${esc(e)}</button>`).join('')}</div>`;
+  const m = modal(`
+    <div class="row"><h2 style="margin:0">Pick a picture</h2><span class="grow"></span><button class="btn small ghost" data-act="x">✖ Close</button></div>
+    <div class="emo-tabs">${EMOJI_CATS.map(([title, list], i) => `<button data-act="tab" data-i="${i}" title="${title}">${list[0]}</button>`).join('')}</div>
+    <div class="emo-scroll">
+      ${inGame.length ? grid('In this game', inGame) : ''}
+      ${EMOJI_CATS.map(([title, list], i) => `<div data-cat="${i}">${grid(title, list)}</div>`).join('')}
+    </div>
+    <label>Or type any emoji</label>
+    <div class="row" style="flex-wrap:nowrap"><input type="text" id="eOwn" maxlength="24" placeholder="😀" autocomplete="off" data-1p-ignore>
+      <button class="btn" data-act="own">Use it</button></div>`,
+    {
+      pick: (m, b) => onPick(b.dataset.e),
+      tab: (m, b) => { const box = $('.emo-scroll', m); box.scrollTop = $(`[data-cat="${b.dataset.i}"]`, m).offsetTop; return false; },
+      own: m => { const v = firstEmoji($('#eOwn', m).value); if (!v) return false; onPick(v); },
+    }, {cls: 'wide'});
+  $('#eOwn', m).addEventListener('keydown', e => { if (e.key === 'Enter') $('[data-act=own]', m).click(); });
+}
+
 function fieldHTML(f, v, path) {
   const at = `data-p="${path}" data-k="${f.k}" data-t="${f.t}"`;
   if (f.t === 'num') return `<input type="number" step="any" class="f num" ${at} value="${esc(v)}">`;
   if (f.t === 'text') return `<input type="text" maxlength="40" class="f txt" ${at} value="${esc(v)}">`;
   if (f.t === 'new') return `<input type="text" maxlength="12" class="f nm" ${at} value="${esc(v)}">`;
+  if (f.t === 'emoji') return `<button type="button" class="f emo" ${at} title="Pick a picture">${esc(v)}</button>`;
   let opts = f.t === 'ref' ? names().map(x => [x, x]) : OPTIONS[f.t];
   if (!opts.some(o => o[0] === v)) opts = [[v, v], ...opts];
   return `<select class="f" ${at}>${opts.map(o => `<option value="${esc(o[0])}" ${o[0] === v ? 'selected' : ''}>${esc(o[1])}</option>`).join('')}</select>`;
@@ -1088,7 +1152,7 @@ function renderEditor() {
   app.innerHTML = `
     <div class="ed-top">
       <button class="btn ghost small" data-a="go" data-v="make">← Workshop</button>
-      <select id="gIcon" class="iconsel" title="Game picture">${[...new Set([g.icon, ...EMOJI])].map(e => `<option ${e === g.icon ? 'selected' : ''}>${esc(e)}</option>`).join('')}</select>
+      <button id="gIcon" class="iconsel" title="Game picture">${esc(g.icon)}</button>
       <input id="gTitle" class="title" maxlength="30" value="${esc(g.title)}" title="Game name">
       <div class="seg"><button data-a="mode" data-m="blocks" class="${g.mode === 'blocks' ? 'on' : ''}">🧱 Blocks</button><button data-a="mode" data-m="code" class="${g.mode === 'code' ? 'on' : ''}">⌨️ Real code</button></div>
       <button class="btn ghost small" id="undoBtn" data-a="undo" title="Undo (Ctrl+Z)">↶ Undo</button>
@@ -1116,7 +1180,7 @@ function renderEditor() {
       </div>
     </div>`;
   $('#gTitle').addEventListener('input', e => { g.title = e.target.value.trim() || 'My Game'; save(); });
-  $('#gIcon').addEventListener('change', e => { g.icon = e.target.value; save(); });
+  $('#gIcon').addEventListener('click', e => pickEmoji(g.icon, v => { g.icon = v; save(); e.target.textContent = v; }));
   edStage = makeStage($('#edStage'), {
     onEnd: result => { if (result === 'win' && !g.beaten) { g.beaten = true; save(); beatHint(); } },
     onPoint: (x, y) => { $('#ptr').textContent = x === undefined ? 'Point at the stage to see x and y.' : `👉 x: ${x}, y: ${y}`; },
@@ -1223,7 +1287,8 @@ function bindWorkspace() {
   // a renamed character has to show up in every "who" menu
   ws.addEventListener('change', e => { if (e.target.dataset.t === 'new') renderWorkspace(); });
   ws.addEventListener('click', e => {
-    const t = e.target.closest('[data-w]'), scr = e.target.closest('.script');
+    const t = e.target.closest('[data-w]'), scr = e.target.closest('.script'), emo = e.target.closest('.emo');
+    if (emo) return pickEmoji(emo.textContent, v => { blockAt(emo.dataset.p).args[emo.dataset.k] = v; save(); renderWorkspace(); commit(); });
     if (t) {
       const [si, bi] = t.dataset.p.split('.').map(Number), list = cur.scripts[si].blocks;
       if (t.dataset.w === 'delscript') cur.scripts.splice(si, 1);
@@ -1373,6 +1438,7 @@ document.addEventListener('click', e => {
   if (el && !el.disabled && !e.target.closest('.modal-bg') && ACTIONS[el.dataset.a]) ACTIONS[el.dataset.a](el.dataset);
 });
 
+applyHash();
 render();
 if (skippedBlocks) toast(`🧹 Skipped ${skippedBlocks} old block${skippedBlocks === 1 ? '' : 's'} this version does not know.`);
 </script>
