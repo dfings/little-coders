@@ -9,7 +9,7 @@
 :root{
   --bg:#f3f0ff; --ink:#2b2350; --soft:#6b6490; --card:#fff; --line:#e3ddfb;
   --brand:#7c4dff; --brand2:#ff5fa2; --coin:#ffb703; --ok:#22c55e; --bad:#ef4444;
-  --ev:#f5a700; --mk:#a855f7; --mv:#3b82f6; --gm:#16a34a; --lf:#e11d48; --ck:#0d9488;
+  --ev:#f5a700; --mk:#a855f7; --mv:#3b82f6; --gm:#16a34a; --lf:#e11d48;
 }
 *{box-sizing:border-box}
 html,body{margin:0}
@@ -108,7 +108,7 @@ code{background:#eee9ff;border-radius:5px;padding:0 4px;font:13px ui-monospace,M
 /* blocks */
 .blk{--c:var(--mk);display:flex;flex-wrap:wrap;align-items:center;gap:5px;background:var(--c);color:#fff;font-weight:800;font-size:14px;
   padding:6px 8px;border-radius:10px;box-shadow:inset 0 -3px 0 rgba(0,0,0,.18);margin:0 0 5px}
-.c-events{--c:var(--ev)} .c-make{--c:var(--mk)} .c-motion{--c:var(--mv)} .c-game{--c:var(--gm)} .c-life{--c:var(--lf)} .c-check{--c:var(--ck)}
+.c-events{--c:var(--ev)} .c-make{--c:var(--mk)} .c-motion{--c:var(--mv)} .c-game{--c:var(--gm)} .c-life{--c:var(--lf)}
 .pal .blk{cursor:grab;user-select:none}
 .pal .blk:hover{filter:brightness(1.08)}
 .pal .blk i{font-style:normal;background:rgba(255,255,255,.3);border-radius:6px;padding:0 5px}
@@ -123,8 +123,6 @@ select.f{padding:2px}
 .script{border:3px solid transparent;border-radius:20px;padding:6px;margin-bottom:10px;background:#f7f5ff}
 .script.sel{border-color:var(--brand);background:#efeaff}
 .sbody{padding:6px 0 0 14px;margin-left:8px;border-left:5px solid rgba(0,0,0,.08);min-height:34px}
-/* blocks under an "if" sit indented, one step per "if" above them */
-.sbody .blk.in{margin-left:calc(var(--d) * 20px);border-left:5px solid var(--ck)}
 .sbody .blk.dropb{box-shadow:0 -4px 0 var(--brand2),inset 0 -3px 0 rgba(0,0,0,.18)}
 .sbody.drope{box-shadow:inset 0 -4px 0 var(--brand2)}
 .sbody .tip{color:var(--soft);font-size:13px;padding:4px}
@@ -341,6 +339,8 @@ class Engine {
       forever: fn => E.foreverH.push(fn),
       every: (secs, fn) => E.everyH.push({secs: Math.max(.05, +secs || 1), fn, t: 0}),
       whenTouch: (a, b, fn) => E.touchH.push({a, b, fn}),
+      // like whenTouch, from further away: the gap is measured edge to edge, so 0 means touching
+      whenNear: (a, b, gap, fn) => E.touchH.push({a, b, fn, gap: Math.max(0, +gap || 0)}),
       whenTapped: (name, fn) => E.tapH.push({name, fn}),
       // fire when a character's meter lands on or passes the number, going up or down
       whenHealth: (name, v, fn) => E.meterH.push({key: 'hp', name, v: +v || 0, fn}),
@@ -410,7 +410,7 @@ class Engine {
         if (s.y < -r) s.y = H + r; else if (s.y > H + r) s.y = -r;
       }
     }
-    // "touches" fires once each time two things start overlapping.
+    // "touches" (and "is this close to") fires once each time two things start overlapping (or get that close).
     // Something that was sent to a new spot counts as a fresh touch, even if it lands on the same thing again.
     const forgetJumped = set => {
       for (const k of set) { const [, a, b] = k.split(':'); if (this.jumped.has(+a) || this.jumped.has(+b)) set.delete(k); }
@@ -422,7 +422,8 @@ class Engine {
       const As = this.sprites.filter(s => s.name === h.a), Bs = this.sprites.filter(s => s.name === h.b);
       for (const a of As) for (const b of Bs) {
         if (a === b || a.dead || b.dead || a.hidden || b.hidden) continue;
-        if (Math.hypot(a.x - b.x, a.y - b.y) < (a.size + b.size) * .42) {
+        const d = Math.hypot(a.x - b.x, a.y - b.y), reach = (a.size + b.size) * .42;
+        if (h.gap === undefined ? d < reach : d - reach <= h.gap) {
           const k = i + ':' + a.id + ':' + b.id;
           now.add(k);
           if (!this.touching.has(k)) this.call(h.fn, {[h.b]: b, [h.a]: a});
@@ -577,7 +578,7 @@ const OPTIONS = {
   vis: [['invisible', '🫥 invisible'], ['visible', '👁️ visible']],
   op: [['sub', '➖ take away'], ['add', '➕ add'], ['set', '🟰 set to']],
 };
-const CATS = [['events', '⚡ When…'], ['make', '🎨 Make'], ['motion', '🏃 Move'], ['check', '🤔 If…'], ['life', '❤️ Health'], ['game', '🏆 Game']];
+const CATS = [['events', '⚡ When…'], ['make', '🎨 Make'], ['motion', '🏃 Move'], ['life', '❤️ Health'], ['game', '🏆 Game']];
 const wrapFn = (head, body) => head + '() => {\n' + body.map(l => '  ' + l).join('\n') + '\n});';
 const ref = (k, i) => ({k, t: 'ref', i});
 const meterGen = (what, a) => a.op === 'set' ? `set${what}(${q(a.a)}, ${n(a.amt)});` : `change${what}(${q(a.a)}, ${a.op === 'add' ? n(a.amt) : -n(a.amt)});`;
@@ -592,6 +593,8 @@ const BLOCKS = {
   whenScore: {hat: 1, cat: 'events', parts: ['⭐ when score reaches', {k: 'score', t: 'num', d: 10}], wrap: (a, b) => wrapFn(`whenScore(${n(a.score)}, `, b)},
   whenTimer: {hat: 1, cat: 'events', parts: ['⏰ when timer is', {k: 'secs', t: 'num', d: 0}], wrap: (a, b) => wrapFn(`whenTimer(${n(a.secs)}, `, b)},
   whenNone:  {hat: 1, cat: 'events', parts: ['🫥 when no', ref('a', 1), 'are left'], wrap: (a, b) => wrapFn(`whenNoneLeft(${q(a.a)}, `, b)},
+  whenNear: {hat: 1, cat: 'events', parts: ['📏 when', ref('a', 0), 'is', {k: 'gap', t: 'num', d: 50}, 'spaces or closer to', ref('b', 1)],
+             tip: 'Runs once each time they get this close. 0 spaces means touching.', wrap: (a, b) => wrapFn(`whenNear(${q(a.a)}, ${q(a.b)}, ${n(a.gap)}, `, b)},
   whenHealth: {hat: 1, cat: 'events', parts: ['❤️ when health of', ref('a', 0), 'reaches', {k: 'v', t: 'num', d: 0}], wrap: (a, b) => wrapFn(`whenHealth(${q(a.a)}, ${n(a.v)}, `, b)},
   whenHunger: {hat: 1, cat: 'events', parts: ['🍗 when hunger of', ref('a', 0), 'reaches', {k: 'v', t: 'num', d: 0}], wrap: (a, b) => wrapFn(`whenHunger(${q(a.a)}, ${n(a.v)}, `, b)},
   every:   {hat: 1, cat: 'events', parts: ['⏱️ every', {k: 'secs', t: 'num', d: 1}, 'seconds'], wrap: (a, b) => wrapFn(`every(${n(a.secs)}, `, b)},
@@ -613,11 +616,6 @@ const BLOCKS = {
   bounce:   {cat: 'motion', parts: ['make', ref('a', 0), 'bounce off the walls'], gen: a => `bounce(${q(a.a)});`},
   follow:   {cat: 'motion', parts: ['move', ref('a', 1), 'toward', ref('b', 0), 'at speed', {k: 'speed', t: 'num', d: 1}], gen: a => `follow(${q(a.a)}, ${q(a.b)}, ${n(a.speed)});`},
   stop:     {cat: 'motion', parts: ['stop', ref('a', 0)], gen: a => `stop(${q(a.a)});`},
-
-  // "opens" blocks wrap everything below them in the stack
-  ifNear:   {cat: 'check', opens: 1, parts: ['🤔 if', ref('a', 0), 'is', {k: 'gap', t: 'num', d: 50}, 'spaces or closer to', ref('b', 1)],
-             tip: 'The blocks under this only run when it is true. 0 spaces means touching.',
-             gen: a => `if (distance(${q(a.a)}, ${q(a.b)}) <= ${n(a.gap)}) {`},
 
   health:   {cat: 'life', parts: ['❤️ health of', ref('a', 0), {k: 'op', t: 'op', d: 'sub'}, {k: 'amt', t: 'num', d: 1}], gen: a => meterGen('Health', a)},
   hunger:   {cat: 'life', parts: ['🍗 hunger of', ref('a', 0), {k: 'op', t: 'op', d: 'sub'}, {k: 'amt', t: 'num', d: 1}], gen: a => meterGen('Hunger', a)},
@@ -653,15 +651,8 @@ function mk(type, ...vals) {
 }
 const sc = (hat, ...blocks) => ({hat, blocks});
 
-/* How many "if" blocks each block of a stack sits inside. */
-const depths = blocks => { let d = 0; return blocks.map(b => { const at = d; if (BLOCKS[b.type].opens) d++; return at; }); };
-function genBody(blocks) {
-  const ds = depths(blocks), out = blocks.map((b, i) => '  '.repeat(ds[i]) + BLOCKS[b.type].gen(b.args));
-  for (let d = blocks.filter(b => BLOCKS[b.type].opens).length; d > 0; d--) out.push('  '.repeat(d - 1) + '}');
-  return out;
-}
 function genCode(scripts) {
-  return scripts.map(s => BLOCKS[s.hat.type].wrap(s.hat.args, genBody(s.blocks))).join('\n\n');
+  return scripts.map(s => BLOCKS[s.hat.type].wrap(s.hat.args, s.blocks.map(b => BLOCKS[b.type].gen(b.args)))).join('\n\n');
 }
 const gameCode = g => g.mode === 'code' ? g.code : genCode(g.scripts);
 
@@ -1198,12 +1189,12 @@ function fieldHTML(f, v, path) {
   if (!opts.some(o => o[0] === v)) opts = [[v, v], ...opts];
   return `<select class="f" ${at}>${opts.map(o => `<option value="${esc(o[0])}" ${o[0] === v ? 'selected' : ''}>${esc(o[1])}</option>`).join('')}</select>`;
 }
-function blockHTML(b, path, isHat, depth = 0) {
+function blockHTML(b, path, isHat) {
   const def = BLOCKS[b.type];
   const parts = def.parts.map(p => typeof p === 'string' ? `<span>${p}</span>` : fieldHTML(p, b.args[p.k], path)).join('');
   const tools = isHat ? `<span class="tools"><button data-w="delscript" data-p="${path}" title="Delete this whole stack">✖</button></span>`
     : `<span class="tools"><button data-w="up" data-p="${path}" title="Move up">▲</button><button data-w="down" data-p="${path}" title="Move down">▼</button><button data-w="del" data-p="${path}" title="Delete">✖</button></span>`;
-  return `<div class="blk c-${def.cat} ${isHat ? 'hat' : ''} ${depth ? 'in' : ''}" ${depth ? `style="--d:${depth}"` : ''} data-p="${path}">${isHat ? '' : '<span class="handle" draggable="true" title="Drag me">⠿</span>'}${parts}${tools}</div>`;
+  return `<div class="blk c-${def.cat} ${isHat ? 'hat' : ''}" data-p="${path}">${isHat ? '' : '<span class="handle" draggable="true" title="Drag me">⠿</span>'}${parts}${tools}</div>`;
 }
 function paletteHTML() {
   return CATS.map(([cat, label]) => `<h4>${label}</h4>` + Object.entries(BLOCKS).filter(([, d]) => d.cat === cat).map(([type, d]) =>
@@ -1216,7 +1207,7 @@ function paletteHTML() {
 const SNIPPETS = [
   ['Make things', ["background('skyblue');", "make('🐱', 'cat', 240, 180);", "makeMany(5, '⭐', 'star');", "setSize('cat', 60);", "remove('star');", "hide('cat');", "show('cat');"]],
   ['Move things', ["move('cat', 'left', 5);", "goTo('cat', 240, 180);", "goRandom('star');", "glide('star', 'down', 2);", "bounce('star');", "follow('ghost', 'cat', 1);", "stop('star');"]],
-  ['When…', ["whenKey('left', () => {\n  \n});", "whenTouch('cat', 'star', () => {\n  \n});", "whenTapped('star', () => {\n  \n});", "forever(() => {\n  \n});", "every(1, () => {\n  \n});",
+  ['When…', ["whenKey('left', () => {\n  \n});", "whenTouch('cat', 'star', () => {\n  \n});", "whenNear('cat', 'ghost', 50, () => {\n  \n});", "whenTapped('star', () => {\n  \n});", "forever(() => {\n  \n});", "every(1, () => {\n  \n});",
              "whenScore(10, () => {\n  win();\n});", "whenTimer(0, () => {\n  gameOver();\n});", "whenNoneLeft('star', () => {\n  win();\n});",
              "whenHealth('cat', 0, () => {\n  gameOver();\n});", "whenHunger('cat', 0, () => {\n  changeHealth('cat', -1);\n});"]],
   ['If…', ["if (distance('cat', 'ghost') <= 50) {\n  \n}", "if (health('cat') < 3) {\n  \n}", "if (hunger('cat') === 0) {\n  \n}"]],
@@ -1297,7 +1288,7 @@ function renderWorkspace() {
     (g.scripts.length ? '' : '<div class="empty">No blocks yet. Start with a yellow <b>⚡ When…</b> block.</div>') +
     g.scripts.map((s, si) => `<div class="script ${si === selScript ? 'sel' : ''}" data-si="${si}">
       ${blockHTML(s.hat, String(si), true)}
-      <div class="sbody" data-si="${si}">${(ds => s.blocks.map((b, bi) => blockHTML(b, si + '.' + bi, false, ds[bi])))(depths(s.blocks)).join('') || '<div class="tip">Add blocks here</div>'}</div>
+      <div class="sbody" data-si="${si}">${s.blocks.map((b, bi) => blockHTML(b, si + '.' + bi)).join('') || '<div class="tip">Add blocks here</div>'}</div>
     </div>`).join('');
   refreshPeek();
 }
