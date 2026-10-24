@@ -20,7 +20,7 @@ Open `index.html` in a browser. There is nothing to install or build, and no ser
 
 ## How it works
 
-- **Make.** A new game starts with a cat you can move with the arrow keys. Add blocks from the palette, press **Play** to try it, and use **Undo** and **Redo** freely.
+- **Make.** Pick an **arcade game** or a **story game**. A new arcade game starts with a cat you can move with the arrow keys; a new story game starts with a short adventure. Add blocks from the palette, press **Play** to try it, and use **Undo** and **Redo** freely.
 - **Blocks to real code.** **Peek at the real code** shows the JavaScript behind the blocks. **Real code** turns the blocks into code you can edit. Going back to blocks does not convert typed code; the blocks stay as they were.
 - **Finish.** Win your own game once, then press **Finish game** to earn 25 coins (10 for a remix). You can keep editing afterwards.
 - **Publish.** Put a finished game in the Game Shop for free or for up to 30 coins. Untick **Let other coders look inside and remix it** to keep buyers from opening a copy. Edits to a published game go live straight away.
@@ -61,6 +61,47 @@ The palette on the left of the code editor lists every function you can use.
 - **Health and hunger** are two separate meters on every character. Both start at 10 and appear above the character as a number, like `❤️ 5  🍗 10`, once a block changes them. The blocks can take away, add, or set a number. **When health of … reaches** and **when hunger of … reaches** run when a meter lands on or passes that number, going up or down. In real code: `setHealth`, `changeHealth`, `health`, `whenHealth`, and the same for hunger.
 - **Invisible** characters are not drawn and cannot touch anything or be tapped, but they still move and count. In real code: `hide('cat')` and `show('cat')`.
 - **When … is N spaces or closer to …** runs once each time one character gets that close to another, like **when … touches** from further away. Spaces are measured edge to edge, so 0 means touching. In real code: `whenNear('cat', 'ghost', 50, () => { … })`, and `distance('cat', 'ghost')` gives the gap right now.
+
+## Story games
+
+A story game is pages of text instead of a stage. Each page can show a big emoji picture, some text, and choice buttons that go to other pages. Readers press a choice, or the 1, 2, 3 keys.
+
+- **📄 page** starts a page. The story begins on the first page. Renaming a page updates the choices that go to it.
+- **💬 say**, **🖼️ show picture** and **🔘 choice … goes to page …** fill a page in.
+- **➡️ go to page** jumps straight to another page, keeping what this page said on the screen. **🎲 50% chance to go to page** sometimes does.
+- The player has **❤️ health** and **🍗 hunger**, both starting at 10, with the same take away, add and set-to blocks and **when … reaches** events as arcade games.
+- **Paint the background**, score, sounds, **🎉 you win!** and **💥 game over** work the same as in arcade games. A page with no choices and no ending shows “The end”.
+
+A small story in real code:
+
+```js
+setHealth(10);
+
+page('forest', () => {
+  picture('🌲');
+  say('You wake up in a dark forest.');
+  choice('Follow the path', 'cave');
+  if (health() > 5) choice('Climb a tree', 'tree');
+});
+
+page('cave', () => {
+  picture('🐉');
+  say('A dragon! It snorts fire at you.');
+  changeHealth(-3);
+  if (chance(50)) goTo('forest');
+  choice('Run!', 'forest');
+});
+
+page('tree', () => {
+  say('You can see the way home!');
+  win();
+});
+
+whenHealth(0, () => {
+  say('You are too hurt to go on.');
+  gameOver();
+});
+```
 
 ## Saving and loading
 
