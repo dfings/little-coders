@@ -58,7 +58,7 @@ The palette on the left of the code editor lists every function you can use.
 
 ## Health, hunger and hiding
 
-- **Health and hunger** are two separate meters on every character. Both start at 10 and appear above the character, as ❤️ and 🍗, once a block changes them. The blocks can take away, add, or set a number. **When health of … reaches** and **when hunger of … reaches** run when a meter lands on or passes that number, going up or down. In real code: `setHealth`, `changeHealth`, `health`, `whenHealth`, and the same for hunger.
+- **Health and hunger** are two separate meters on every character. Both start at 10 and appear above the character as a number, like `❤️ 5  🍗 10`, once a block changes them. The blocks can take away, add, or set a number. **When health of … reaches** and **when hunger of … reaches** run when a meter lands on or passes that number, going up or down. In real code: `setHealth`, `changeHealth`, `health`, `whenHealth`, and the same for hunger.
 - **Invisible** characters are not drawn and cannot touch anything or be tapped, but they still move and count. In real code: `hide('cat')` and `show('cat')`.
 - **When … is N spaces or closer to …** runs once each time one character gets that close to another, like **when … touches** from further away. Spaces are measured edge to edge, so 0 means touching. In real code: `whenNear('cat', 'ghost', 50, () => { … })`, and `distance('cat', 'ghost')` gives the gap right now.
 

@@ -451,22 +451,16 @@ class Engine {
     }
   }
 
-  /* Up to 10 hearts or drumsticks in a row above the character, or a number past that. */
+  /* The meters a block has changed, as one line above the character: ❤️ 5  🍗 10 */
   drawMeters(s) {
+    const t = [['hp', '❤️'], ['food', '🍗']].filter(([k]) => s[k] !== undefined).map(([k, icon]) => icon + ' ' + Math.round(s[k])).join('  ');
+    if (!t) return;
     const g = this.g;
-    const rows = [['hp', '❤️'], ['food', '🍗']].filter(([k]) => s[k] !== undefined).map(([k, icon]) => {
-      const v = Math.round(s[k]);
-      return v >= 1 && v <= 10 ? icon.repeat(v) : icon + ' ' + v;
-    });
-    if (!rows.length) return;
-    g.font = '800 10px system-ui, serif'; g.fillStyle = '#fff'; g.strokeStyle = 'rgba(0,0,0,.55)'; g.lineWidth = 3; g.lineJoin = 'round';
-    const top = s.y - s.size / 2 - 7, below = top - (rows.length - 1) * 12 < 6;   // no room above: put them underneath
-    rows.forEach((t, i) => {
-      const w = g.measureText(t).width;
-      const x = between(s.x, w / 2 + 2, W - w / 2 - 2), y = below ? s.y + s.size / 2 + 7 + i * 12 : top - (rows.length - 1 - i) * 12;
-      if (/\d/.test(t)) g.strokeText(t, x, y);   // an outline keeps the number readable on any background
-      g.fillText(t, x, y);
-    });
+    g.font = '800 11px system-ui, serif'; g.fillStyle = '#fff'; g.strokeStyle = 'rgba(0,0,0,.55)'; g.lineWidth = 3; g.lineJoin = 'round';
+    const w = g.measureText(t).width, x = between(s.x, w / 2 + 2, W - w / 2 - 2);
+    const y = s.y - s.size / 2 - 7 < 8 ? s.y + s.size / 2 + 8 : s.y - s.size / 2 - 7;   // no room above: put it underneath
+    g.strokeText(t, x, y);   // an outline keeps the numbers readable on any background
+    g.fillText(t, x, y);
   }
 
   draw() {
