@@ -23,9 +23,9 @@ Open `index.html` in a browser. There is nothing to install or build, and no ser
 - **Make.** A new game starts with a cat you can move with the arrow keys. Add blocks from the palette, press **Play** to try it, and use **Undo** and **Redo** freely.
 - **Blocks to real code.** **Peek at the real code** shows the JavaScript behind the blocks. **Real code** turns the blocks into code you can edit. Going back to blocks does not convert typed code; the blocks stay as they were.
 - **Finish.** Win your own game once, then press **Finish game** to earn 25 coins (10 for a remix). You can keep editing afterwards.
-- **Publish.** Put a finished game in the Game Shop for free or for up to 30 coins. Edits to a published game go live straight away.
+- **Publish.** Put a finished game in the Game Shop for free or for up to 30 coins. Untick **Let other coders look inside and remix it** to keep buyers from opening a copy. Edits to a published game go live straight away.
 - **Game Shop.** Buy games with coins. You start with 10.
-- **My Games.** Every game you made or bought. **Look inside** opens a copy of a bought game in the editor to remix.
+- **My Games.** Every game you made or bought. **Look inside** opens a copy of a bought game in the editor to remix, unless its maker turned that off.
 
 ## The stage
 
@@ -55,6 +55,12 @@ whenScore(10, () => {
 ```
 
 The palette on the left of the code editor lists every function you can use.
+
+## Health, hunger and hiding
+
+- **Health and hunger** are two separate meters on every character. Both start at 10 and appear above the character, as ❤️ and 🍗, once a block changes them. The blocks can take away, add, or set a number. **When health of … reaches** and **when hunger of … reaches** run when a meter lands on or passes that number, going up or down. In real code: `setHealth`, `changeHealth`, `health`, `whenHealth`, and the same for hunger.
+- **Invisible** characters are not drawn and cannot touch anything or be tapped, but they still move and count. In real code: `hide('cat')` and `show('cat')`.
+- **If … is N spaces or closer to …** runs the blocks under it in the stack only when the two are that close. Spaces are measured edge to edge, so 0 means touching. Blocks under an **if** are indented. In real code: `if (distance('cat', 'ghost') <= 50) { … }`.
 
 ## Saving and loading
 

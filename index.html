@@ -9,7 +9,7 @@
 :root{
   --bg:#f3f0ff; --ink:#2b2350; --soft:#6b6490; --card:#fff; --line:#e3ddfb;
   --brand:#7c4dff; --brand2:#ff5fa2; --coin:#ffb703; --ok:#22c55e; --bad:#ef4444;
-  --ev:#f5a700; --mk:#a855f7; --mv:#3b82f6; --gm:#16a34a;
+  --ev:#f5a700; --mk:#a855f7; --mv:#3b82f6; --gm:#16a34a; --lf:#e11d48; --ck:#0d9488;
 }
 *{box-sizing:border-box}
 html,body{margin:0}
@@ -108,7 +108,7 @@ code{background:#eee9ff;border-radius:5px;padding:0 4px;font:13px ui-monospace,M
 /* blocks */
 .blk{--c:var(--mk);display:flex;flex-wrap:wrap;align-items:center;gap:5px;background:var(--c);color:#fff;font-weight:800;font-size:14px;
   padding:6px 8px;border-radius:10px;box-shadow:inset 0 -3px 0 rgba(0,0,0,.18);margin:0 0 5px}
-.c-events{--c:var(--ev)} .c-make{--c:var(--mk)} .c-motion{--c:var(--mv)} .c-game{--c:var(--gm)}
+.c-events{--c:var(--ev)} .c-make{--c:var(--mk)} .c-motion{--c:var(--mv)} .c-game{--c:var(--gm)} .c-life{--c:var(--lf)} .c-check{--c:var(--ck)}
 .pal .blk{cursor:grab;user-select:none}
 .pal .blk:hover{filter:brightness(1.08)}
 .pal .blk i{font-style:normal;background:rgba(255,255,255,.3);border-radius:6px;padding:0 5px}
@@ -123,6 +123,8 @@ select.f{padding:2px}
 .script{border:3px solid transparent;border-radius:20px;padding:6px;margin-bottom:10px;background:#f7f5ff}
 .script.sel{border-color:var(--brand);background:#efeaff}
 .sbody{padding:6px 0 0 14px;margin-left:8px;border-left:5px solid rgba(0,0,0,.08);min-height:34px}
+/* blocks under an "if" sit indented, one step per "if" above them */
+.sbody .blk.in{margin-left:calc(var(--d) * 20px);border-left:5px solid var(--ck)}
 .sbody .blk.dropb{box-shadow:0 -4px 0 var(--brand2),inset 0 -3px 0 rgba(0,0,0,.18)}
 .sbody.drope{box-shadow:inset 0 -4px 0 var(--brand2)}
 .sbody .tip{color:var(--soft);font-size:13px;padding:4px}
@@ -245,7 +247,8 @@ class Engine {
     this.cv = canvas; this.g = canvas.getContext('2d');
     this.onEnd = onEnd; this.onError = onError;
     this.sprites = []; this.nextId = 1; this.bg = '#8fd3ff';
-    this.keyH = []; this.foreverH = []; this.everyH = []; this.touchH = []; this.tapH = []; this.condH = [];
+    this.keyH = []; this.foreverH = []; this.everyH = []; this.touchH = []; this.tapH = []; this.condH = []; this.meterH = [];
+    this.later = [];   // handlers to run at the end of the frame, like "when health reaches 0"
     this.held = new Set(); this.touching = new Set(); this.ctx = null;
     this.scoreV = 0; this.msg = ''; this.msgT = 0;
     this.clock = 0; this.clockPrev = 0; this.clockDir = 1; this.showClock = false;   // the game timer
@@ -279,6 +282,14 @@ class Engine {
       if (E.sprites.length < 150) E.sprites.push(s);
       return s;
     };
+    // Health and hunger start at 10 and show above a character once a block changes them.
+    const meter = (key, name, f) => grp(name).forEach(s => {
+      const was = s[key] === undefined ? 10 : s[key], now = between(+f(was) || 0, 0, 999);
+      s[key] = now;
+      for (const h of E.meterH) if (h.key === key && h.name === s.name && was !== now && (was < h.v ? h.v <= now : h.v >= now))
+        E.later.push({fn: h.fn, ctx: {[s.name]: s}});
+    });
+    const meterOf = (key, name) => { const s = grp(name)[0]; return !s ? 0 : s[key] === undefined ? 10 : s[key]; };
     return {
       WIDTH: W, HEIGHT: H, X_MAX: W, Y_MAX: H, random, make,
       background: c => { E.bg = String(c); },
@@ -298,6 +309,21 @@ class Engine {
       },
       setSize: (name, size) => grp(name).forEach(s => { s.size = Math.max(8, Math.min(200, +size || 40)); }),
       remove: name => grp(name).forEach(s => { s.dead = true; }),
+      hide: name => grp(name).forEach(s => { s.hidden = true; }),
+      show: name => grp(name).forEach(s => { s.hidden = false; }),
+      // the gap between the closest two, edge to edge: 0 means they touch
+      distance: (a, b) => {
+        let best = Infinity;
+        for (const s of grp(a)) for (const t of grp(b))
+          if (s !== t && !s.hidden && !t.hidden) best = Math.min(best, Math.max(0, Math.hypot(s.x - t.x, s.y - t.y) - (s.size + t.size) * .42));
+        return best;
+      },
+      setHealth: (name, v) => meter('hp', name, () => v),
+      changeHealth: (name, by) => meter('hp', name, was => was + (+by || 0)),
+      health: name => meterOf('hp', name),
+      setHunger: (name, v) => meter('food', name, () => v),
+      changeHunger: (name, by) => meter('food', name, was => was + (+by || 0)),
+      hunger: name => meterOf('food', name),
       all: name => grp(name),
       count: name => grp(name).length,
       changeScore: by => { E.scoreV += +by || 0; },
@@ -316,6 +342,9 @@ class Engine {
       every: (secs, fn) => E.everyH.push({secs: Math.max(.05, +secs || 1), fn, t: 0}),
       whenTouch: (a, b, fn) => E.touchH.push({a, b, fn}),
       whenTapped: (name, fn) => E.tapH.push({name, fn}),
+      // fire when a character's meter lands on or passes the number, going up or down
+      whenHealth: (name, v, fn) => E.meterH.push({key: 'hp', name, v: +v || 0, fn}),
+      whenHunger: (name, v, fn) => E.meterH.push({key: 'food', name, v: +v || 0, fn}),
       // these three fire once, at the moment the thing becomes true
       whenScore: (target, fn) => E.condH.push({fn, was: false, test: () => E.scoreV >= target}),
       // true on the frame the timer reaches or passes the number, counting up or down
@@ -392,7 +421,7 @@ class Engine {
     this.touchH.forEach((h, i) => {
       const As = this.sprites.filter(s => s.name === h.a), Bs = this.sprites.filter(s => s.name === h.b);
       for (const a of As) for (const b of Bs) {
-        if (a === b || a.dead || b.dead) continue;
+        if (a === b || a.dead || b.dead || a.hidden || b.hidden) continue;
         if (Math.hypot(a.x - b.x, a.y - b.y) < (a.size + b.size) * .42) {
           const k = i + ':' + a.id + ':' + b.id;
           now.add(k);
@@ -402,8 +431,11 @@ class Engine {
     });
     forgetJumped(now);
     this.touching = now;
-    this.sprites = this.sprites.filter(s => !s.dead);
     for (const h of this.condH) { const is = h.test(); if (is && !h.was) this.call(h.fn); h.was = is; }
+    // handlers can queue more handlers; the cap stops two that keep setting each other off
+    for (let i = 0; i < this.later.length && i < 200; i++) this.call(this.later[i].fn, this.later[i].ctx);
+    this.later = [];
+    this.sprites = this.sprites.filter(s => !s.dead);
     this.clockPrev = this.clock;
   }
 
@@ -411,11 +443,29 @@ class Engine {
     if (!this.running) return;
     for (let i = this.sprites.length - 1; i >= 0; i--) {
       const s = this.sprites[i];
-      if (!s.dead && Math.hypot(s.x - x, s.y - y) < Math.max(22, s.size * .6)) {
+      if (!s.dead && !s.hidden && Math.hypot(s.x - x, s.y - y) < Math.max(22, s.size * .6)) {
         const hs = this.tapH.filter(h => h.name === s.name);
         if (hs.length) { hs.forEach(h => this.call(h.fn, {[s.name]: s})); return; }
       }
     }
+  }
+
+  /* Up to 10 hearts or drumsticks in a row above the character, or a number past that. */
+  drawMeters(s) {
+    const g = this.g;
+    const rows = [['hp', '❤️'], ['food', '🍗']].filter(([k]) => s[k] !== undefined).map(([k, icon]) => {
+      const v = Math.round(s[k]);
+      return v >= 1 && v <= 10 ? icon.repeat(v) : icon + ' ' + v;
+    });
+    if (!rows.length) return;
+    g.font = '800 10px system-ui, serif'; g.fillStyle = '#fff'; g.strokeStyle = 'rgba(0,0,0,.55)'; g.lineWidth = 3; g.lineJoin = 'round';
+    const top = s.y - s.size / 2 - 7, below = top - (rows.length - 1) * 12 < 6;   // no room above: put them underneath
+    rows.forEach((t, i) => {
+      const w = g.measureText(t).width;
+      const x = between(s.x, w / 2 + 2, W - w / 2 - 2), y = below ? s.y + s.size / 2 + 7 + i * 12 : top - (rows.length - 1 - i) * 12;
+      if (/\d/.test(t)) g.strokeText(t, x, y);   // an outline keeps the number readable on any background
+      g.fillText(t, x, y);
+    });
   }
 
   draw() {
@@ -425,9 +475,10 @@ class Engine {
     g.fillRect(0, 0, W, H);
     g.textAlign = 'center'; g.textBaseline = 'middle';
     for (const s of this.sprites) {
-      if (s.dead) continue;
+      if (s.dead || s.hidden) continue;
       g.font = s.size + 'px serif';
       g.fillText(s.emoji, s.x, s.y + s.size * .06);
+      this.drawMeters(s);
     }
     g.font = '900 18px system-ui, sans-serif'; g.textAlign = 'left'; g.lineJoin = 'round';
     g.lineWidth = 4; g.strokeStyle = 'rgba(0,0,0,.55)'; g.fillStyle = '#fff';
@@ -523,10 +574,13 @@ const OPTIONS = {
           ['white', '⬜ white'], ['midnightblue', '🌌 night'], ['black', '⬛ space']],
   counting: [['up', '⬆ up'], ['down', '⬇ down']],
   sound: [['pop', 'pop'], ['coin', 'coin'], ['jump', 'jump'], ['boom', 'boom']],
+  vis: [['invisible', '🫥 invisible'], ['visible', '👁️ visible']],
+  op: [['sub', '➖ take away'], ['add', '➕ add'], ['set', '🟰 set to']],
 };
-const CATS = [['events', '⚡ When…'], ['make', '🎨 Make'], ['motion', '🏃 Move'], ['game', '🏆 Game']];
+const CATS = [['events', '⚡ When…'], ['make', '🎨 Make'], ['motion', '🏃 Move'], ['check', '🤔 If…'], ['life', '❤️ Health'], ['game', '🏆 Game']];
 const wrapFn = (head, body) => head + '() => {\n' + body.map(l => '  ' + l).join('\n') + '\n});';
 const ref = (k, i) => ({k, t: 'ref', i});
+const meterGen = (what, a) => a.op === 'set' ? `set${what}(${q(a.a)}, ${n(a.amt)});` : `change${what}(${q(a.a)}, ${a.op === 'add' ? n(a.amt) : -n(a.amt)});`;
 
 const BLOCKS = {
   // "hat" blocks start a script
@@ -538,6 +592,8 @@ const BLOCKS = {
   whenScore: {hat: 1, cat: 'events', parts: ['⭐ when score reaches', {k: 'score', t: 'num', d: 10}], wrap: (a, b) => wrapFn(`whenScore(${n(a.score)}, `, b)},
   whenTimer: {hat: 1, cat: 'events', parts: ['⏰ when timer is', {k: 'secs', t: 'num', d: 0}], wrap: (a, b) => wrapFn(`whenTimer(${n(a.secs)}, `, b)},
   whenNone:  {hat: 1, cat: 'events', parts: ['🫥 when no', ref('a', 1), 'are left'], wrap: (a, b) => wrapFn(`whenNoneLeft(${q(a.a)}, `, b)},
+  whenHealth: {hat: 1, cat: 'events', parts: ['❤️ when health of', ref('a', 0), 'reaches', {k: 'v', t: 'num', d: 0}], wrap: (a, b) => wrapFn(`whenHealth(${q(a.a)}, ${n(a.v)}, `, b)},
+  whenHunger: {hat: 1, cat: 'events', parts: ['🍗 when hunger of', ref('a', 0), 'reaches', {k: 'v', t: 'num', d: 0}], wrap: (a, b) => wrapFn(`whenHunger(${q(a.a)}, ${n(a.v)}, `, b)},
   every:   {hat: 1, cat: 'events', parts: ['⏱️ every', {k: 'secs', t: 'num', d: 1}, 'seconds'], wrap: (a, b) => wrapFn(`every(${n(a.secs)}, `, b)},
 
   background: {cat: 'make', parts: ['paint the background', {k: 'color', t: 'color', d: 'skyblue'}], gen: a => `background(${q(a.color)});`},
@@ -547,6 +603,8 @@ const BLOCKS = {
              gen: a => `makeMany(${n(a.count)}, ${q(a.emoji)}, ${q(a.name)});`},
   setSize:  {cat: 'make', parts: ['set size of', ref('a', 0), 'to', {k: 'size', t: 'num', d: 60}], gen: a => `setSize(${q(a.a)}, ${n(a.size)});`},
   remove:   {cat: 'make', parts: ['remove', ref('a', 0)], gen: a => `remove(${q(a.a)});`},
+  visible:  {cat: 'make', parts: ['make', ref('a', 0), {k: 'vis', t: 'vis', d: 'invisible'}], tip: 'Invisible things cannot touch anything or be tapped',
+             gen: a => a.vis === 'visible' ? `show(${q(a.a)});` : `hide(${q(a.a)});`},
 
   move:     {cat: 'motion', parts: ['move', ref('a', 0), {k: 'dir', t: 'dir', d: 'right'}, 'by', {k: 'steps', t: 'num', d: 5}], gen: a => `move(${q(a.a)}, ${q(a.dir)}, ${n(a.steps)});`},
   goTo:     {cat: 'motion', parts: ['send', ref('a', 0), 'to x', {k: 'x', t: 'num', d: 240}, 'y', {k: 'y', t: 'num', d: 180}], gen: a => `goTo(${q(a.a)}, ${n(a.x)}, ${n(a.y)});`},
@@ -555,6 +613,14 @@ const BLOCKS = {
   bounce:   {cat: 'motion', parts: ['make', ref('a', 0), 'bounce off the walls'], gen: a => `bounce(${q(a.a)});`},
   follow:   {cat: 'motion', parts: ['move', ref('a', 1), 'toward', ref('b', 0), 'at speed', {k: 'speed', t: 'num', d: 1}], gen: a => `follow(${q(a.a)}, ${q(a.b)}, ${n(a.speed)});`},
   stop:     {cat: 'motion', parts: ['stop', ref('a', 0)], gen: a => `stop(${q(a.a)});`},
+
+  // "opens" blocks wrap everything below them in the stack
+  ifNear:   {cat: 'check', opens: 1, parts: ['🤔 if', ref('a', 0), 'is', {k: 'gap', t: 'num', d: 50}, 'spaces or closer to', ref('b', 1)],
+             tip: 'The blocks under this only run when it is true. 0 spaces means touching.',
+             gen: a => `if (distance(${q(a.a)}, ${q(a.b)}) <= ${n(a.gap)}) {`},
+
+  health:   {cat: 'life', parts: ['❤️ health of', ref('a', 0), {k: 'op', t: 'op', d: 'sub'}, {k: 'amt', t: 'num', d: 1}], gen: a => meterGen('Health', a)},
+  hunger:   {cat: 'life', parts: ['🍗 hunger of', ref('a', 0), {k: 'op', t: 'op', d: 'sub'}, {k: 'amt', t: 'num', d: 1}], gen: a => meterGen('Hunger', a)},
 
   changeScore: {cat: 'game', parts: ['change score by', {k: 'by', t: 'num', d: 1}], gen: a => `changeScore(${n(a.by)});`},
   say:      {cat: 'game', parts: ['say', {k: 'text', t: 'text', d: 'Hello!'}], gen: a => `say(${q(a.text)});`},
@@ -587,8 +653,15 @@ function mk(type, ...vals) {
 }
 const sc = (hat, ...blocks) => ({hat, blocks});
 
+/* How many "if" blocks each block of a stack sits inside. */
+const depths = blocks => { let d = 0; return blocks.map(b => { const at = d; if (BLOCKS[b.type].opens) d++; return at; }); };
+function genBody(blocks) {
+  const ds = depths(blocks), out = blocks.map((b, i) => '  '.repeat(ds[i]) + BLOCKS[b.type].gen(b.args));
+  for (let d = blocks.filter(b => BLOCKS[b.type].opens).length; d > 0; d--) out.push('  '.repeat(d - 1) + '}');
+  return out;
+}
 function genCode(scripts) {
-  return scripts.map(s => BLOCKS[s.hat.type].wrap(s.hat.args, s.blocks.map(b => BLOCKS[b.type].gen(b.args)))).join('\n\n');
+  return scripts.map(s => BLOCKS[s.hat.type].wrap(s.hat.args, genBody(s.blocks))).join('\n\n');
 }
 const gameCode = g => g.mode === 'code' ? g.code : genCode(g.scripts);
 
@@ -678,7 +751,7 @@ whenTouch('ship', 'rock', () => {
 whenTimer(20, () => {
   win();
 });`},
-  {id: 'seed-pizza', title: 'Pizza Party', icon: '🍕', author: 'DinoDev', avatar: '🦖', price: 20, sales: 39, mode: 'code',
+  {id: 'seed-pizza', title: 'Pizza Party', icon: '🍕', author: 'DinoDev', avatar: '🦖', price: 20, sales: 39, mode: 'code', noRemix: true,
    desc: 'Catch 12 pizzas in your basket. Watch out for the bombs!',
    code: `// Pizza Party by DinoDev
 background('khaki');
@@ -845,7 +918,7 @@ function applyState(d) {
   const games = (Array.isArray(r.games) ? r.games : []).map((g, i) => Object.assign(cleanGame(g), {
     id: 'g' + (i + 1), beaten: !!g.beaten, finished: !!g.finished, published: !!g.published && !!g.finished,
     price: between(Math.round(n(g.price)), 0, MAX_PRICE), sales: Math.max(0, Math.round(n(g.sales))),
-    remixOf: typeof g.remixOf === 'string' ? g.remixOf : null,
+    remixOf: typeof g.remixOf === 'string' ? g.remixOf : null, noRemix: !!g.noRemix,
   }));
   const next = Object.assign(fresh(), {
     user: r.user && typeof r.user.name === 'string' ? {name: r.user.name.slice(0, 14) || 'SuperCoder', avatar: String(r.user.avatar || '🦊').slice(0, 8)} : null,
@@ -973,6 +1046,7 @@ function statusChips(g) {
   return (g.published ? `<span class="chip pink">🚀 in the shop · ${g.price ? g.price + ' 🪙' : 'free'}</span>` :
           g.finished ? '<span class="chip green">✅ finished</span>' : '<span class="chip">🚧 still building</span>') +
          (g.remixOf ? ' <span class="chip gold">🔀 remix</span>' : '') +
+         (g.published && g.noRemix ? ' <span class="chip">🔒 no remixing</span>' : '') +
          (g.published ? ` <span class="chip gold">🛒 ${g.sales || 0} sold</span>` : '');
 }
 function card(g, inner, by) {
@@ -1010,7 +1084,7 @@ function renderShop() {
       : owned ? `<button class="btn small green" data-a="play" data-id="${g.id}">▶ Play</button><span class="chip green">in My Games</span>`
       : `<button class="btn small gold" data-a="buy" data-id="${g.id}">${g.price ? 'Buy' : 'Get it'}</button>`;
     return card(g, `<div class="desc">${esc(g.desc || '')}</div>
-      <div class="row">${price}<span class="hint">🛒 ${g.sales || 0} sold</span><span class="chip">${g.mode === 'code' ? '⌨️ code' : '🧱 blocks'}</span></div>
+      <div class="row">${price}<span class="hint">🛒 ${g.sales || 0} sold</span><span class="chip">${g.mode === 'code' ? '⌨️ code' : '🧱 blocks'}</span>${g.noRemix ? '<span class="chip" title="The maker turned off looking inside">🔒 no remixing</span>' : ''}</div>
       <div class="row">${btn}</div>`, yours ? byMe() : `by ${esc(g.avatar + ' ' + g.author)}`);
   };
   app.innerHTML = `
@@ -1033,7 +1107,8 @@ function renderInv() {
     ${bought.length ? `<div class="grid">${bought.map(g => card(g, `
         <div class="desc">${esc(g.desc || '')}</div>
         <div class="row"><button class="btn small green" data-a="play" data-id="${g.id}">▶ Play</button>
-        <button class="btn small ghost" data-a="remix" data-id="${g.id}" title="Open a copy in the editor">👀 Look inside</button></div>`,
+        ${g.noRemix ? '<button class="btn small ghost" disabled title="The maker turned off looking inside">🔒 No peeking</button>'
+          : `<button class="btn small ghost" data-a="remix" data-id="${g.id}" title="Open a copy in the editor">👀 Look inside</button>`}</div>`,
         `by ${esc(g.avatar + ' ' + g.author)}`)).join('')}</div>`
       : `<div class="empty">Nothing here yet. <button class="btn small gold" data-a="go" data-v="shop">🛒 Go shopping</button></div>`}`;
 }
@@ -1123,26 +1198,29 @@ function fieldHTML(f, v, path) {
   if (!opts.some(o => o[0] === v)) opts = [[v, v], ...opts];
   return `<select class="f" ${at}>${opts.map(o => `<option value="${esc(o[0])}" ${o[0] === v ? 'selected' : ''}>${esc(o[1])}</option>`).join('')}</select>`;
 }
-function blockHTML(b, path, isHat) {
+function blockHTML(b, path, isHat, depth = 0) {
   const def = BLOCKS[b.type];
   const parts = def.parts.map(p => typeof p === 'string' ? `<span>${p}</span>` : fieldHTML(p, b.args[p.k], path)).join('');
   const tools = isHat ? `<span class="tools"><button data-w="delscript" data-p="${path}" title="Delete this whole stack">✖</button></span>`
     : `<span class="tools"><button data-w="up" data-p="${path}" title="Move up">▲</button><button data-w="down" data-p="${path}" title="Move down">▼</button><button data-w="del" data-p="${path}" title="Delete">✖</button></span>`;
-  return `<div class="blk c-${def.cat} ${isHat ? 'hat' : ''}" data-p="${path}">${isHat ? '' : '<span class="handle" draggable="true" title="Drag me">⠿</span>'}${parts}${tools}</div>`;
+  return `<div class="blk c-${def.cat} ${isHat ? 'hat' : ''} ${depth ? 'in' : ''}" ${depth ? `style="--d:${depth}"` : ''} data-p="${path}">${isHat ? '' : '<span class="handle" draggable="true" title="Drag me">⠿</span>'}${parts}${tools}</div>`;
 }
 function paletteHTML() {
   return CATS.map(([cat, label]) => `<h4>${label}</h4>` + Object.entries(BLOCKS).filter(([, d]) => d.cat === cat).map(([type, d]) =>
-    `<div class="blk c-${cat}" draggable="true" data-new="${type}" title="Click or drag to add">${d.parts.map(p => {
+    `<div class="blk c-${cat}" draggable="true" data-new="${type}" title="${esc(d.tip ? d.tip + '. Click or drag to add.' : 'Click or drag to add')}">${d.parts.map(p => {
       if (typeof p === 'string') return p;
       const o = OPTIONS[p.t] && OPTIONS[p.t].find(x => x[0] === p.d);
       return `<i>${esc(p.t === 'ref' ? 'who' : o ? o[1] : p.d)}</i>`;
     }).join(' ')}</div>`).join('')).join('');
 }
 const SNIPPETS = [
-  ['Make things', ["background('skyblue');", "make('🐱', 'cat', 240, 180);", "makeMany(5, '⭐', 'star');", "setSize('cat', 60);", "remove('star');"]],
+  ['Make things', ["background('skyblue');", "make('🐱', 'cat', 240, 180);", "makeMany(5, '⭐', 'star');", "setSize('cat', 60);", "remove('star');", "hide('cat');", "show('cat');"]],
   ['Move things', ["move('cat', 'left', 5);", "goTo('cat', 240, 180);", "goRandom('star');", "glide('star', 'down', 2);", "bounce('star');", "follow('ghost', 'cat', 1);", "stop('star');"]],
   ['When…', ["whenKey('left', () => {\n  \n});", "whenTouch('cat', 'star', () => {\n  \n});", "whenTapped('star', () => {\n  \n});", "forever(() => {\n  \n});", "every(1, () => {\n  \n});",
-             "whenScore(10, () => {\n  win();\n});", "whenTimer(0, () => {\n  gameOver();\n});", "whenNoneLeft('star', () => {\n  win();\n});"]],
+             "whenScore(10, () => {\n  win();\n});", "whenTimer(0, () => {\n  gameOver();\n});", "whenNoneLeft('star', () => {\n  win();\n});",
+             "whenHealth('cat', 0, () => {\n  gameOver();\n});", "whenHunger('cat', 0, () => {\n  changeHealth('cat', -1);\n});"]],
+  ['If…', ["if (distance('cat', 'ghost') <= 50) {\n  \n}", "if (health('cat') < 3) {\n  \n}", "if (hunger('cat') === 0) {\n  \n}"]],
+  ['Health', ["setHealth('cat', 10);", "changeHealth('cat', -1);", "health('cat')", "setHunger('cat', 10);", "changeHunger('cat', 1);", "hunger('cat')"]],
   ['Game', ["changeScore(1);", "say('Hello!');", "sound('coin');", "if (score() >= 10) win();", "setTimer(20, 'down');", "showTimer();", "hideTimer();", "if (count('star') === 0) win();", "random(1, 10)", "random(0, X_MAX)", "random(0, Y_MAX)"]],
 ];
 
@@ -1219,7 +1297,7 @@ function renderWorkspace() {
     (g.scripts.length ? '' : '<div class="empty">No blocks yet. Start with a yellow <b>⚡ When…</b> block.</div>') +
     g.scripts.map((s, si) => `<div class="script ${si === selScript ? 'sel' : ''}" data-si="${si}">
       ${blockHTML(s.hat, String(si), true)}
-      <div class="sbody" data-si="${si}">${s.blocks.map((b, bi) => blockHTML(b, si + '.' + bi)).join('') || '<div class="tip">Add blocks here</div>'}</div>
+      <div class="sbody" data-si="${si}">${(ds => s.blocks.map((b, bi) => blockHTML(b, si + '.' + bi, false, ds[bi])))(depths(s.blocks)).join('') || '<div class="tip">Add blocks here</div>'}</div>
     </div>`).join('');
   refreshPeek();
 }
@@ -1372,12 +1450,13 @@ function publishGame() {
     <label>Price: <span id="pLabel"></span></label>
     <input type="range" id="pPrice" min="0" max="${MAX_PRICE}" value="${g.price}">
     <div class="hint">You earn the price every time someone buys it. Cheaper games get bought more often!</div>
+    <label><input type="checkbox" id="pRemix" ${g.noRemix ? '' : 'checked'}> 🔀 Let other coders look inside and remix it</label>
     <div class="acts">${g.published ? '<button class="btn ghost" data-act="un">Take it out of the shop</button>' : ''}
       <button class="btn ghost" data-act="x">Cancel</button><button class="btn pink" data-act="pub">${g.published ? 'Save' : '🚀 Publish'}</button></div>`,
     {
       pub: m => {
         const first = !g.published;
-        g.desc = $('#pDesc', m).value.trim(); g.price = +$('#pPrice', m).value; g.published = true; save(); renderEditor();
+        g.desc = $('#pDesc', m).value.trim(); g.price = +$('#pPrice', m).value; g.noRemix = !$('#pRemix', m).checked; g.published = true; save(); renderEditor();
         if (first) { beep('coin'); note('🚀', 'It is in the Game Shop!', `Other coders can now ${g.price ? `buy ${esc(g.title)} for ${g.price} 🪙` : `play ${esc(g.title)} for free`}. Watch your coins!`, 'Awesome'); return false; }
       },
       un: () => { g.published = false; save(); renderEditor(); toast('Taken out of the shop.'); }
@@ -1408,7 +1487,7 @@ const ACTIONS = {
   edit: d => { cur = findGame(d.id); selScript = 0; go('editor'); },
   play: d => playGame(findGame(d.id)),
   buy: d => buyGame(findGame(d.id)),
-  remix: d => newGame(findGame(d.id)),
+  remix: d => { const g = findGame(d.id); if (g && !g.noRemix) newGame(g); },
   del: d => {
     const g = findGame(d.id);
     modal(`<div class="big">🗑️</div><h2 style="text-align:center">Delete ${esc(g.title)}?</h2><p style="text-align:center">It will be gone for good.</p>
