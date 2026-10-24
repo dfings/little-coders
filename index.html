@@ -9,7 +9,7 @@
 :root{
   --bg:#f3f0ff; --ink:#2b2350; --soft:#6b6490; --card:#fff; --line:#e3ddfb;
   --brand:#7c4dff; --brand2:#ff5fa2; --coin:#ffb703; --ok:#22c55e; --bad:#ef4444;
-  --ev:#f5a700; --mk:#a855f7; --mv:#3b82f6; --gm:#16a34a; --lf:#e11d48; --st:#0d9488;
+  --ev:#f5a700; --mk:#a855f7; --mv:#3b82f6; --gm:#16a34a; --lf:#e11d48; --st:#0d9488; --it:#b45309;
 }
 *{box-sizing:border-box}
 html,body{margin:0}
@@ -108,7 +108,7 @@ code{background:#eee9ff;border-radius:5px;padding:0 4px;font:13px ui-monospace,M
 /* blocks */
 .blk{--c:var(--mk);display:flex;flex-wrap:wrap;align-items:center;gap:5px;background:var(--c);color:#fff;font-weight:800;font-size:14px;
   padding:6px 8px;border-radius:10px;box-shadow:inset 0 -3px 0 rgba(0,0,0,.18);margin:0 0 5px}
-.c-events{--c:var(--ev)} .c-make{--c:var(--mk)} .c-motion{--c:var(--mv)} .c-game{--c:var(--gm)} .c-life{--c:var(--lf)} .c-story{--c:var(--st)}
+.c-events{--c:var(--ev)} .c-make{--c:var(--mk)} .c-motion{--c:var(--mv)} .c-game{--c:var(--gm)} .c-life{--c:var(--lf)} .c-story{--c:var(--st)} .c-items{--c:var(--it)}
 .pal .blk{cursor:grab;user-select:none}
 .pal .blk:hover{filter:brightness(1.08)}
 .pal .blk i{font-style:normal;background:rgba(255,255,255,.3);border-radius:6px;padding:0 5px}
@@ -582,6 +582,7 @@ class StoryEngine {
     this.pages = {}; this.order = []; this.meterH = []; this.later = [];
     this.text = []; this.choices = []; this.pic = ''; this.bg = '#2b2350';
     this.hp = 10; this.food = 10; this.scoreV = 0; this.shown = new Set();   // meters show once a block changes them
+    this.items = new Map();   // what the player carries: name -> {emoji, n}
     this.ended = false; this.failed = false; this.result = null;
   }
 
@@ -617,6 +618,17 @@ class StoryEngine {
       hunger: () => E.food,
       whenHealth: (v, fn) => E.meterH.push({key: 'hp', v: +v || 0, fn}),
       whenHunger: (v, fn) => E.meterH.push({key: 'food', v: +v || 0, fn}),
+      give: (emoji, name, count = 1) => {
+        name = String(name); const it = E.items.get(name);
+        E.items.set(name, {emoji: String(emoji), n: (it ? it.n : 0) + Math.max(0, Math.round(+count) || 0)});
+      },
+      take: (name, count = 1) => {
+        name = String(name); const it = E.items.get(name); if (!it) return;
+        it.n -= Math.max(0, Math.round(+count) || 0);
+        if (it.n <= 0) E.items.delete(String(name));
+      },
+      has: (name, count = 1) => { const it = E.items.get(String(name)); return !!it && it.n >= (+count || 1); },
+      count: name => { const it = E.items.get(String(name)); return it ? it.n : 0; },
       changeScore: by => { E.scoreV += +by || 0; E.shown.add('score'); },
       setScore: v => { E.scoreV = +v || 0; E.shown.add('score'); },
       score: () => E.scoreV,
@@ -669,7 +681,9 @@ class StoryEngine {
   render() {
     const b = this.box;
     b.className = 'story'; b.style.background = ''; b.style.background = this.bg;
-    const hud = [['score', '⭐ ' + this.scoreV], ['hp', '❤️ ' + Math.round(this.hp)], ['food', '🍗 ' + Math.round(this.food)]].filter(([k]) => this.shown.has(k)).map(x => `<span>${x[1]}</span>`).join('');
+    const bag = [...this.items].map(([name, it]) => `<span title="${esc(name)}">${esc(it.emoji)}${it.n > 1 ? '×' + it.n : ''}</span>`).join(' ');
+    const hud = [['score', '⭐ ' + this.scoreV], ['hp', '❤️ ' + Math.round(this.hp)], ['food', '🍗 ' + Math.round(this.food)]].filter(([k]) => this.shown.has(k)).map(x => `<span>${x[1]}</span>`).join('')
+      + (bag ? `<span>🎒 ${bag}</span>` : '');
     const end = this.ended ? `<div class="big">${this.result === 'win' ? '🎉 You win!' : '💥 Game over'}</div>${this.shown.has('score') ? `<div>Score: ${this.scoreV}</div>` : ''}`
       : this.choices.length ? '' : '<div class="big">🔚 The end</div>';
     b.innerHTML = (hud ? `<div class="st-hud">${hud}</div>` : '') + `<div class="st-card">
@@ -731,10 +745,11 @@ const OPTIONS = {
   sound: [['pop', 'pop'], ['coin', 'coin'], ['jump', 'jump'], ['boom', 'boom']],
   vis: [['invisible', '🫥 invisible'], ['visible', '👁️ visible']],
   op: [['sub', '➖ take away'], ['add', '➕ add'], ['set', '🟰 set to']],
+  has: [['has', '✅ have'], ['not', "❌ don't have"]],
 };
 const CATS = {
   arcade: [['events', '⚡ When…'], ['make', '🎨 Make'], ['motion', '🏃 Move'], ['life', '❤️ Health'], ['game', '🏆 Game']],
-  story: [['events', '📄 Pages'], ['story', '💬 Story'], ['make', '🎨 Make'], ['life', '❤️ Health'], ['game', '🏆 Game']],
+  story: [['events', '📄 Pages'], ['story', '💬 Story'], ['items', '🎒 Items'], ['make', '🎨 Make'], ['life', '❤️ Health'], ['game', '🏆 Game']],
 };
 const gameKind = g => g && g.kind === 'story' ? 'story' : 'arcade';
 const wrapFn = (head, body) => head + '() => {\n' + body.map(l => '  ' + l).join('\n') + '\n});';
@@ -803,9 +818,18 @@ const BLOCKS = {
   goPage:   {kind: 'story', cat: 'story', parts: ['➡️ go to page', {k: 'to', t: 'page'}], tip: 'Jumps there straight away, and keeps what this page said on the screen',
              gen: a => `goTo(${q(a.to)});`},
   chance:   {kind: 'story', cat: 'story', parts: ['🎲', {k: 'pct', t: 'num', d: 50}, '% chance to go to page', {k: 'to', t: 'page'}], gen: a => `if (chance(${n(a.pct)})) goTo(${q(a.to)});`},
+  give:     {kind: 'story', cat: 'items', parts: ['🎒 give the player', {k: 'n', t: 'num', d: 1}, {k: 'emoji', t: 'emoji', d: '🔑'}, {k: 'name', t: 'iname', d: 'key'}],
+             gen: a => `give(${q(a.emoji)}, ${q(a.name)}${n(a.n) === 1 ? '' : ', ' + n(a.n)});`},
+  take:     {kind: 'story', cat: 'items', parts: ['🎒 take away', {k: 'n', t: 'num', d: 1}, {k: 'item', t: 'item'}],
+             gen: a => `take(${q(a.item)}${n(a.n) === 1 ? '' : ', ' + n(a.n)});`},
+  choiceIf: {kind: 'story', cat: 'items', parts: ['🔘 choice', {k: 'text', t: 'text', d: 'Unlock the door'}, 'goes to page', {k: 'to', t: 'page'}, 'only if you have', {k: 'n', t: 'num', d: 1}, {k: 'item', t: 'item'}],
+             tip: 'The button only shows up when the player is carrying this', gen: a => `if (${hasCode(a)}) choice(${q(a.text)}, ${q(a.to)});`},
+  goIfHas:  {kind: 'story', cat: 'items', parts: ['🎒 if you', {k: 'op', t: 'has', d: 'has'}, {k: 'n', t: 'num', d: 1}, {k: 'item', t: 'item'}, 'go to page', {k: 'to', t: 'page'}],
+             gen: a => `if (${a.op === 'not' ? '!' : ''}${hasCode(a)}) goTo(${q(a.to)});`},
   sHealth:  {kind: 'story', cat: 'life', parts: ['❤️ health', {k: 'op', t: 'op', d: 'sub'}, {k: 'amt', t: 'num', d: 1}], gen: a => meterGen('Health', a)},
   sHunger:  {kind: 'story', cat: 'life', parts: ['🍗 hunger', {k: 'op', t: 'op', d: 'sub'}, {k: 'amt', t: 'num', d: 1}], gen: a => meterGen('Hunger', a)},
 };
+const hasCode = a => `has(${q(a.item)}${n(a.n) === 1 ? '' : ', ' + n(a.n)})`;
 const inKind = (type, kind) => [kind, 'both'].includes(BLOCKS[type].kind || 'arcade');
 const fields = type => BLOCKS[type].parts.filter(p => typeof p !== 'string');
 
@@ -819,6 +843,7 @@ function names() {
   return out;
 }
 const pageNames = () => (cur ? cur.scripts : []).filter(s => s.hat.type === 'page').map(s => s.hat.args.name).filter(Boolean);
+const itemNames = () => [...new Set((cur ? cur.scripts : []).flatMap(s => s.blocks).filter(b => b.type === 'give').map(b => b.args.name).filter(Boolean))];
 function newPageName() {
   const ps = pageNames(); let i = 2;
   if (!ps.length) return 'start';
@@ -830,7 +855,7 @@ function mk(type, ...vals) {
   const args = {}, ns = names();
   fields(type).forEach((f, i) => {
     args[f.k] = vals[i] !== undefined ? vals[i] : f.t === 'ref' ? (ns[f.i] || ns[0] || 'cat')
-      : f.t === 'page' ? (pageNames()[0] || 'start') : f.t === 'pname' ? newPageName() : f.d;
+      : f.t === 'page' ? (pageNames()[0] || 'start') : f.t === 'item' ? (itemNames()[0] || 'key') : f.t === 'pname' ? newPageName() : f.d;
   });
   return {type, args};
 }
@@ -933,13 +958,17 @@ whenTimer(20, () => {
      sc(mk('start'), mk('background', 'midnightblue'), mk('sHealth', 'set', 10), mk('sHunger', 'set', 4)),
      sc(mk('page', 'outside'), mk('picture', '🏚️'), mk('tell', 'You stand outside a spooky old house. Your tummy rumbles.'),
         mk('choice', 'Go inside', 'hall'), mk('choice', 'Run home', 'home')),
-     sc(mk('page', 'hall'), mk('picture', '🕯️'), mk('tell', 'The door creaks shut behind you. One door smells like cookies. The other one is very cold.'),
-        mk('sHunger', 'sub', 1), mk('choice', 'Open the cookie door', 'kitchen'), mk('choice', 'Open the cold door', 'cellar')),
+     sc(mk('page', 'hall'), mk('picture', '🕯️'), mk('tell', 'The door creaks shut behind you. One door smells like cookies. One is very cold. One is made of gold and locked tight.'),
+        mk('sHunger', 'sub', 1), mk('choice', 'Open the cookie door', 'kitchen'), mk('choice', 'Open the cold door', 'cellar'),
+        mk('choiceIf', 'Unlock the gold door', 'secret', 1, 'gold key')),
      sc(mk('page', 'kitchen'), mk('picture', '👻'), mk('tell', 'A friendly ghost is baking cookies! You eat three.'), mk('sHunger', 'add', 3),
-        mk('choice', 'Ask the ghost about treasure', 'secret'), mk('choice', 'Go back to the hall', 'hall')),
+        mk('choice', 'Ask the ghost about treasure', 'ghost'), mk('choice', 'Go back to the hall', 'hall')),
+     sc(mk('page', 'ghost'), mk('picture', '👻'), mk('goIfHas', 'has', 1, 'gold key', 'nomore'), mk('tell', '“Here, take my old key,” says the ghost. “It opens the gold door.”'),
+        mk('give', 1, '🔑', 'gold key'), mk('choice', 'Go back to the hall', 'hall')),
+     sc(mk('page', 'nomore'), mk('tell', '“You already have my key, silly!” says the ghost.'), mk('choice', 'Go back to the hall', 'hall')),
      sc(mk('page', 'cellar'), mk('picture', '🦇'), mk('tell', 'Bats! They swoop all around you.'), mk('sHealth', 'sub', 4),
         mk('choice', 'Run back up', 'hall')),
-     sc(mk('page', 'secret'), mk('picture', '💎'), mk('tell', 'The ghost shows you a secret door. Behind it is a sparkly treasure!'), mk('changeScore', 10), mk('win')),
+     sc(mk('page', 'secret'), mk('picture', '💎'), mk('tell', 'The gold door swings open. Behind it is a sparkly treasure!'), mk('take', 1, 'gold key'), mk('changeScore', 10), mk('win')),
      sc(mk('page', 'home'), mk('picture', '🛏️'), mk('tell', 'You run home and hide under your blanket. Maybe next time!'), mk('gameOver')),
      sc(mk('sWhenHealth', 0), mk('tell', 'You are too scared to go on.'), mk('gameOver')),
      sc(mk('sWhenHunger', 0), mk('tell', 'Your tummy is too empty to keep exploring.'), mk('gameOver')),
@@ -1356,11 +1385,11 @@ const STARTER = {
     sc(mk('start'), mk('sHealth', 'set', 10), mk('sHunger', 'set', 10)),
     sc(mk('page', 'forest'), mk('picture', '🌲'), mk('tell', 'You wake up in a dark forest. Your tummy rumbles.'), mk('sHunger', 'sub', 1),
        mk('choice', 'Follow the path', 'cave'), mk('choice', 'Climb a tree', 'tree')),
-    sc(mk('page', 'cave'), mk('picture', '🐉'), mk('tell', 'A dragon is asleep on a pile of gold! It snorts some fire at you.'), mk('sHealth', 'sub', 3),
-       mk('choice', 'Grab the gold', 'gold'), mk('choice', 'Tiptoe away', 'forest')),
-    sc(mk('page', 'tree'), mk('picture', '🍎'), mk('tell', 'You find an apple at the top and eat it. Yum!'), mk('sHunger', 'add', 2),
-       mk('choice', 'Climb down', 'forest')),
-    sc(mk('page', 'gold'), mk('picture', '💰'), mk('tell', 'You grab the gold and run all the way home!'), mk('win')),
+    sc(mk('page', 'cave'), mk('picture', '🐉'), mk('tell', 'A dragon is guarding a pile of gold! It snorts some fire at you.'), mk('sHealth', 'sub', 3),
+       mk('choiceIf', 'Fight the dragon', 'gold', 1, 'sword'), mk('choice', 'Run away', 'forest')),
+    sc(mk('page', 'tree'), mk('picture', '🍎'), mk('tell', 'You find an apple at the top and eat it. Yum! Someone left a sword up here too.'), mk('sHunger', 'add', 2),
+       mk('give', 1, '🗡️', 'sword'), mk('choice', 'Climb down', 'forest')),
+    sc(mk('page', 'gold'), mk('picture', '💰'), mk('tell', 'You wave your sword and the dragon flies away. The gold is yours!'), mk('win')),
     sc(mk('sWhenHealth', 0), mk('tell', 'Ouch! You are too hurt to go on.'), mk('gameOver')),
   ],
 };
@@ -1411,9 +1440,9 @@ function fieldHTML(f, v, path) {
   if (f.t === 'num') return `<input type="number" step="any" class="f num" ${at} value="${esc(v)}">`;
   if (f.t === 'text') return `<input type="text" maxlength="40" class="f txt" ${at} value="${esc(v)}">`;
   if (f.t === 'long') return `<input type="text" maxlength="300" class="f long" ${at} value="${esc(v)}">`;
-  if (f.t === 'new' || f.t === 'pname') return `<input type="text" maxlength="12" class="f nm" ${at} value="${esc(v)}">`;
+  if (f.t === 'new' || f.t === 'pname' || f.t === 'iname') return `<input type="text" maxlength="12" class="f nm" ${at} value="${esc(v)}">`;
   if (f.t === 'emoji') return `<button type="button" class="f emo" ${at} title="Pick a picture">${esc(v)}</button>`;
-  let opts = f.t === 'ref' ? names().map(x => [x, x]) : f.t === 'page' ? pageNames().map(x => [x, x]) : OPTIONS[f.t];
+  let opts = f.t === 'ref' ? names().map(x => [x, x]) : f.t === 'page' ? pageNames().map(x => [x, x]) : f.t === 'item' ? itemNames().map(x => [x, x]) : OPTIONS[f.t];
   if (!opts.some(o => o[0] === v)) opts = [[v, v], ...opts];
   return `<select class="f" ${at}>${opts.map(o => `<option value="${esc(o[0])}" ${o[0] === v ? 'selected' : ''}>${esc(o[1])}</option>`).join('')}</select>`;
 }
@@ -1429,7 +1458,7 @@ function paletteHTML(kind) {
     `<div class="blk c-${cat}" draggable="true" data-new="${type}" title="${esc(d.tip ? d.tip + '. Click or drag to add.' : 'Click or drag to add')}">${d.parts.map(p => {
       if (typeof p === 'string') return p;
       const o = OPTIONS[p.t] && OPTIONS[p.t].find(x => x[0] === p.d);
-      return `<i>${esc(p.t === 'ref' ? 'who' : p.t === 'page' ? 'page' : o ? o[1] : p.d)}</i>`;
+      return `<i>${esc(p.t === 'ref' ? 'who' : p.t === 'page' ? 'page' : p.t === 'item' ? 'thing' : o ? o[1] : p.d)}</i>`;
     }).join(' ')}</div>`).join('')).join('');
 }
 const SNIPPETS = {arcade: [
@@ -1443,6 +1472,7 @@ const SNIPPETS = {arcade: [
   ['Game', ["changeScore(1);", "say('Hello!');", "sound('coin');", "if (score() >= 10) win();", "setTimer(20, 'down');", "showTimer();", "hideTimer();", "if (count('star') === 0) win();", "random(1, 10)", "random(0, X_MAX)", "random(0, Y_MAX)"]],
 ], story: [
   ['Pages', ["page('cave', () => {\n  \n});", "say('Once upon a time…');", "picture('🐉');", "choice('Open the door', 'cave');", "goTo('cave');", "background('midnightblue');"]],
+  ['Items', ["give('🔑', 'key');", "give('🪙', 'coin', 3);", "take('key');", "if (has('key')) choice('Unlock the door', 'vault');", "if (!has('key')) goTo('locked');", "if (has('coin', 3)) choice('Buy a sword', 'shop');", "count('coin')"]],
   ['When…', ["whenHealth(0, () => {\n  gameOver();\n});", "whenHunger(0, () => {\n  changeHealth(-2);\n});"]],
   ['If…', ["if (chance(50)) goTo('cave');", "if (health() < 3) {\n  \n}", "if (hunger() > 5) choice('Run fast', 'escape');", "if (score() >= 10) win();"]],
   ['Health', ["setHealth(10);", "changeHealth(-1);", "health()", "setHunger(10);", "changeHunger(1);", "hunger()"]],
@@ -1587,15 +1617,16 @@ function bindWorkspace() {
 
   ws.addEventListener('input', e => {
     const f = e.target.closest('.f'); if (!f) return;
-    const b = blockAt(f.dataset.p), was = b.args[f.dataset.k], named = f.dataset.t === 'new' || f.dataset.t === 'pname';
+    const b = blockAt(f.dataset.p), was = b.args[f.dataset.k], named = ['new', 'pname', 'iname'].includes(f.dataset.t);
     b.args[f.dataset.k] = named ? f.value.replace(/['"\\]/g, '') : f.value;
-    // choices that went to a renamed page follow it to its new name
-    if (f.dataset.t === 'pname') for (const s of cur.scripts) for (const x of s.blocks)
-      for (const fl of fields(x.type)) if (fl.t === 'page' && x.args[fl.k] === was) x.args[fl.k] = b.args[f.dataset.k];
+    // blocks that pick a renamed page or thing follow it to its new name (unless another block still gives the old thing)
+    const follow = {pname: 'page', iname: 'item'}[f.dataset.t];
+    if (follow && !(follow === 'item' && itemNames().includes(was))) for (const s of cur.scripts) for (const x of s.blocks)
+      for (const fl of fields(x.type)) if (fl.t === follow && x.args[fl.k] === was) x.args[fl.k] = b.args[f.dataset.k];
     save(); refreshPeek(); commitSoon();
   });
-  // a renamed character or page has to show up in every menu that picks one
-  ws.addEventListener('change', e => { if (e.target.dataset.t === 'new' || e.target.dataset.t === 'pname') renderWorkspace(); });
+  // a renamed character, page or thing has to show up in every menu that picks one
+  ws.addEventListener('change', e => { if (['new', 'pname', 'iname'].includes(e.target.dataset.t)) renderWorkspace(); });
   ws.addEventListener('click', e => {
     const t = e.target.closest('[data-w]'), scr = e.target.closest('.script'), emo = e.target.closest('.emo');
     if (emo) return pickEmoji(emo.textContent, v => { blockAt(emo.dataset.p).args[emo.dataset.k] = v; save(); renderWorkspace(); commit(); });

@@ -69,6 +69,7 @@ A story game is pages of text instead of a stage. Each page can show a big emoji
 - **📄 page** starts a page. The story begins on the first page. Renaming a page updates the choices that go to it.
 - **💬 say**, **🖼️ show picture** and **🔘 choice … goes to page …** fill a page in.
 - **➡️ go to page** jumps straight to another page, keeping what this page said on the screen. **🎲 50% chance to go to page** sometimes does.
+- **🎒 Items.** **Give the player 1 🔑 key** puts a thing in the player's bag, and **take away** uses it up. Things can stack, like 3 🪙 coins. **🔘 choice … only if you have 1 key** shows a button only when the player carries it, and **if you have (or don't have) … go to page** jumps based on it. The bag shows at the top of the story. In real code: `give('🔑', 'key')`, `take('key')`, `has('key')`, `has('coin', 3)` and `count('coin')`.
 - The player has **❤️ health** and **🍗 hunger**, both starting at 10, with the same take away, add and set-to blocks and **when … reaches** events as arcade games.
 - **Paint the background**, score, sounds, **🎉 you win!** and **💥 game over** work the same as in arcade games. A page with no choices and no ending shows “The end”.
 
@@ -84,16 +85,23 @@ page('forest', () => {
   if (health() > 5) choice('Climb a tree', 'tree');
 });
 
+page('tree', () => {
+  say('Someone left a sword up here.');
+  give('🗡️', 'sword');
+  choice('Climb down', 'forest');
+});
+
 page('cave', () => {
   picture('🐉');
   say('A dragon! It snorts fire at you.');
   changeHealth(-3);
   if (chance(50)) goTo('forest');
+  if (has('sword')) choice('Fight it', 'gold');
   choice('Run!', 'forest');
 });
 
-page('tree', () => {
-  say('You can see the way home!');
+page('gold', () => {
+  say('The dragon flies away. The gold is yours!');
   win();
 });
 
